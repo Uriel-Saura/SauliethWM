@@ -342,3 +342,149 @@ class MonocleLayout(Layout):
 
         full = area.pad(self._gap)
         return [full] * count
+
+
+# ============================================================================
+# ThreeColumnLayout - Tres columnas (izquierda, centro master, derecha)
+# ============================================================================
+class ThreeColumnLayout(Layout):
+    """
+    Layout de tres columnas.
+
+    La ventana master ocupa la columna central. Las ventanas secundarias
+    se reparten alternando entre la columna izquierda y la derecha.
+
+    Con 1 ventana: ocupa todo el area.
+    Con 2 ventanas: master izquierda, segunda derecha (se comporta como Tall).
+    Con 3+ ventanas: tres columnas con master en el centro.
+
+    Esquema (5 ventanas):
+        +------+----------+------+
+        |  2   |          |  3   |
+        +------+  1       +------+
+        |  4   | (master) |  5   |
+        +------+----------+------+
+    """
+
+    def __init__(
+        self,
+        master_ratio: float = 0.50,
+        gap: int = 4,
+    ) -> None:
+        super().__init__(master_ratio=master_ratio, gap=gap)
+
+    @property
+    def layout_type(self) -> LayoutType:
+        return LayoutType.THREE_COLUMN
+
+    @property
+    def name(self) -> str:
+        return "ThreeColumn"
+
+    def arrange(self, count: int, area: Rect) -> list[Rect]:
+        """
+        Calcula posiciones para un layout de tres columnas.
+
+        Args:
+            count: Numero de ventanas.
+            area:  Area disponible del monitor.
+
+        Returns:
+            Lista de Rect con las posiciones calculadas.
+        """
+        if count <= 0:
+            return []
+
+        gap = self._gap
+
+        # Una sola ventana: ocupa todo
+        if count == 1:
+            return [area.pad(gap)]
+
+        # Dos ventanas: master izquierda, segunda derecha (como Tall)
+        if count == 2:
+            left, right = area.split_horizontal(self._master_ratio)
+            master_rect = Rect(
+                x=left.x + gap,
+                y=left.y + gap,
+                w=left.w - gap - gap // 2,
+                h=left.h - 2 * gap,
+            )
+            second_rect = Rect(
+                x=right.x + gap // 2,
+                y=right.y + gap,
+                w=right.w - gap - gap // 2,
+                h=right.h - 2 * gap,
+            )
+            return [master_rect, second_rect]
+
+        # 3+ ventanas: tres columnas
+        # Calcular anchos: laterales iguales, centro segun master_ratio
+        side_ratio = (1.0 - self._master_ratio) / 2.0
+        left_w = int(area.w * side_ratio)
+        center_w = int(area.w * self._master_ratio)
+        right_w = area.w - left_w - center_w
+
+        left_area = Rect(area.x, area.y, left_w, area.h)
+        center_area = Rect(area.x + left_w, area.y, center_w, area.h)
+        right_area = Rect(area.x + left_w + center_w, area.y, right_w, area.h)
+
+        # Master en el centro
+        master_rect = Rect(
+            x=center_area.x + gap // 2,
+            y=center_area.y + gap,
+            w=center_area.w - gap,
+            h=center_area.h - 2 * gap,
+        )
+
+        # Distribuir ventanas secundarias alternando izquierda/derecha
+        left_windows: list[int] = []
+        right_windows: list[int] = []
+        for i in range(1, count):
+            if i % 2 == 1:
+                left_windows.append(i)
+            else:
+                right_windows.append(i)
+
+        # Si no hay ventanas en un lado, redistribuir
+        if not right_windows and len(left_windows) > 1:
+            half = len(left_windows) // 2
+            right_windows = left_windows[half:]
+            left_windows = left_windows[:half]
+
+        results: list[Rect] = [master_rect]  # indice 0 = master
+
+        # Crear slots vacios para todas las ventanas
+        slots: list[Rect | None] = [None] * count
+        slots[0] = master_rect
+
+        # Apilar ventanas en la columna izquierda
+        if left_windows:
+            left_rows = left_area.slice_rows(len(left_windows))
+            for idx, win_idx in enumerate(left_windows):
+                row = left_rows[idx]
+                top_gap = gap if idx == 0 else gap // 2
+                bottom_gap = gap if idx == len(left_windows) - 1 else gap // 2
+                slots[win_idx] = Rect(
+                    x=row.x + gap,
+                    y=row.y + top_gap,
+                    w=row.w - gap - gap // 2,
+                    h=row.h - top_gap - bottom_gap,
+                )
+
+        # Apilar ventanas en la columna derecha
+        if right_windows:
+            right_rows = right_area.slice_rows(len(right_windows))
+            for idx, win_idx in enumerate(right_windows):
+                row = right_rows[idx]
+                top_gap = gap if idx == 0 else gap // 2
+                bottom_gap = gap if idx == len(right_windows) - 1 else gap // 2
+                slots[win_idx] = Rect(
+                    x=row.x + gap // 2,
+                    y=row.y + top_gap,
+                    w=row.w - gap - gap // 2,
+                    h=row.h - top_gap - bottom_gap,
+                )
+
+        # Retornar en orden, filtrando None (no deberia haber)
+        return [s for s in slots if s is not None]
