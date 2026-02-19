@@ -215,3 +215,81 @@ class TallLayout(Layout):
             stack_rects.append(r)
 
         return [master_rect] + stack_rects
+
+
+# ============================================================================
+# WideLayout - Master arriba, stack abajo
+# ============================================================================
+class WideLayout(Layout):
+    """
+    Layout tipo 'wide' (master-stack horizontal).
+
+    Con 1 ventana: ocupa toda el area.
+    Con 2+ ventanas: la primera (master) ocupa la fila superior
+    segun master_ratio, y las demas se reparten en columnas abajo.
+
+    Esquema (3 ventanas):
+        +------------------+
+        |    1 (master)    |
+        +--------+---------+
+        |   2    |    3    |
+        +--------+---------+
+    """
+
+    @property
+    def layout_type(self) -> LayoutType:
+        return LayoutType.WIDE
+
+    @property
+    def name(self) -> str:
+        return "Wide"
+
+    def arrange(self, count: int, area: Rect) -> list[Rect]:
+        """
+        Calcula posiciones para un layout wide (master arriba, stack abajo).
+
+        Args:
+            count: Numero de ventanas.
+            area:  Area disponible del monitor.
+
+        Returns:
+            Lista de Rect con las posiciones calculadas.
+        """
+        if count <= 0:
+            return []
+
+        gap = self._gap
+
+        # Una sola ventana: ocupa todo con gap exterior
+        if count == 1:
+            return [area.pad(gap)]
+
+        # Dividir en master (arriba) y stack (abajo)
+        master_area, stack_area = area.split_vertical(self._master_ratio)
+
+        # Aplicar gap al master
+        master_rect = Rect(
+            x=master_area.x + gap,
+            y=master_area.y + gap,
+            w=master_area.w - 2 * gap,
+            h=master_area.h - gap - gap // 2,
+        )
+
+        # Dividir el stack en columnas iguales
+        stack_count = count - 1
+        stack_cols = stack_area.slice_columns(stack_count)
+
+        # Aplicar gap a cada columna del stack
+        stack_rects: list[Rect] = []
+        for i, col in enumerate(stack_cols):
+            left_gap = gap if i == 0 else gap // 2
+            right_gap = gap if i == stack_count - 1 else gap // 2
+            r = Rect(
+                x=col.x + left_gap,
+                y=col.y + gap // 2,
+                w=col.w - left_gap - right_gap,
+                h=col.h - gap - gap // 2,
+            )
+            stack_rects.append(r)
+
+        return [master_rect] + stack_rects
