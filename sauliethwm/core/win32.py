@@ -308,6 +308,26 @@ def post_quit_message(exit_code: int = 0) -> None:
 
 
 WM_QUIT = 0x0012
+WM_HOTKEY = 0x0312
+
+# Modifier keys for RegisterHotKey
+MOD_ALT = 0x0001
+MOD_CONTROL = 0x0002
+MOD_SHIFT = 0x0004
+MOD_WIN = 0x0008
+MOD_NOREPEAT = 0x4000
+
+# Virtual key codes
+VK_0 = 0x30
+VK_1 = 0x31
+VK_2 = 0x32
+VK_3 = 0x33
+VK_4 = 0x34
+VK_5 = 0x35
+VK_6 = 0x36
+VK_7 = 0x37
+VK_8 = 0x38
+VK_9 = 0x39
 
 
 def post_thread_message(thread_id: int, msg: int, wparam: int = 0, lparam: int = 0) -> bool:
@@ -327,3 +347,35 @@ def co_initialize() -> None:
 
 def co_uninitialize() -> None:
     ole32.CoUninitialize()
+
+
+# ============================================================================
+# Global hotkey registration
+# ============================================================================
+
+def register_hotkey(hotkey_id: int, modifiers: int, vk: int) -> bool:
+    """
+    Register a system-wide hotkey.
+
+    Args:
+        hotkey_id: Unique integer identifier for this hotkey.
+        modifiers: Combination of MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN.
+        vk:        Virtual key code (e.g. VK_1 for '1').
+
+    Returns:
+        True if registered successfully.
+    """
+    return bool(user32.RegisterHotKey(None, hotkey_id, modifiers, vk))
+
+
+def unregister_hotkey(hotkey_id: int) -> bool:
+    """
+    Unregister a previously registered hotkey.
+
+    Args:
+        hotkey_id: The ID used during registration.
+
+    Returns:
+        True if unregistered successfully.
+    """
+    return bool(user32.UnregisterHotKey(None, hotkey_id))
