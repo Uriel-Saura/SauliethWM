@@ -9,6 +9,7 @@ import sys
 
 from sauliethwm.core.manager import WindowManager, WMEvent
 from sauliethwm.core.window import Window
+from sauliethwm.core import win32
 from sauliethwm.core.keybinds import HotkeyManager
 from sauliethwm.tiling.workspace_manager import WorkspaceManager
 from sauliethwm.config.hotkeys import register_workspace_hotkeys
@@ -75,6 +76,10 @@ def create_workspace_handler(ws_manager: WorkspaceManager):
         - WINDOW_MINIMIZED: Elimina temporalmente del workspace y retilea.
     """
 
+    # Mapa hwnd -> workspace_id para recordar de donde vino
+    # una ventana minimizada, y restaurarla al workspace correcto.
+    _minimized_origins: dict[int, int] = {}
+
     def workspace_handler(
         event: WMEvent, window: Window | None, wm: WindowManager
     ) -> None:
@@ -88,9 +93,29 @@ def create_workspace_handler(ws_manager: WorkspaceManager):
             ws_manager.remove_window(window)
 
         elif event == WMEvent.WINDOW_RESTORED:
-            # La ventana vuelve de minimizada: asegurar que esta en un workspace
+            # La ventana vuelve de minimizada: intentar restaurar
+            # al workspace original donde estaba antes de minimizar.
             ws = ws_manager.find_window_workspace(window)
             if ws is None:
+                origin_ws_id = _minimized_origins.pop(window.hwnd, None)
+                if origin_ws_id is not None:
+                    target_ws = ws_manager.get_workspace(origin_ws_id)
+                    if target_ws is not None:
+                        target_ws.add_window(window)
+                        if target_ws.is_active:
+                            mi = ws_manager.get_monitor_for_workspace(target_ws.id)
+                            if mi is not None:
+                                ws_manager.retile(mi)
+                        else:
+                            # El workspace no esta activo: ocultar la ventana
+                            ws_manager._suppress_events()
+                            try:
+                                if window.is_valid:
+                                    win32.show_window(window.hwnd, win32.SW_HIDE)
+                            finally:
+                                ws_manager._resume_events()
+                        return
+                # Fallback: agregar al workspace activo
                 ws_manager.add_window(window)
             else:
                 # Retilear su workspace si esta activo
@@ -99,7 +124,11 @@ def create_workspace_handler(ws_manager: WorkspaceManager):
                     ws_manager.retile(mi)
 
         elif event == WMEvent.WINDOW_MINIMIZED:
-            # Sacar del workspace para que las demas ocupen su espacio
+            # Guardar el workspace de origen antes de remover,
+            # para poder restaurarla al workspace correcto.
+            ws = ws_manager.find_window_workspace(window)
+            if ws is not None:
+                _minimized_origins[window.hwnd] = ws.id
             ws_manager.remove_window(window)
 
     return workspace_handler
@@ -120,6 +149,9 @@ def main() -> None:
 
     # Crear el gestor de workspaces (reemplaza al TilingEngine directo)
     ws_manager = WorkspaceManager()
+
+    # Enlazar WorkspaceManager con WindowManager para supresion de eventos
+    ws_manager.set_window_manager(wm)
 
     # Registrar callback de cambio de workspace
     ws_manager.on_workspace_changed(on_workspace_changed)
@@ -153,6 +185,7 @@ def main() -> None:
     print("  Keybindings:")
     print("    Alt + 1..9          Switch workspace")
     print("    Alt + Shift + 1..9  Move window to workspace")
+    print("    Alt + Shift + Q     Quit SauliethWM")
     print("=" * 60 + "\n")
 
     # Enter the blocking event loop

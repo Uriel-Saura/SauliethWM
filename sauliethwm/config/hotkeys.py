@@ -4,11 +4,12 @@ sauliethwm.config.hotkeys - Definicion de hotkeys para workspaces.
 Define y registra todos los keybindings relacionados con:
     - Navegacion entre workspaces (Alt+1..9)
     - Mover ventana a workspace (Alt+Shift+1..9)
-    - Mover ventana al siguiente monitor (Alt+Shift+M)
+    - Cerrar el WM (Alt+Shift+Q)
 
 Esquema de teclas (estilo i3/dwm):
     Alt + 1..9          -> Cambiar al workspace 1..9
     Alt + Shift + 1..9  -> Mover ventana enfocada al workspace 1..9
+    Alt + Shift + Q     -> Cerrar SauliethWM (muestra estado)
 """
 
 from __future__ import annotations
@@ -104,10 +105,27 @@ def register_workspace_hotkeys(
         if result is not None:
             registered += 1
 
+    # ------------------------------------------------------------------
+    # Alt + Shift + Q: Cerrar SauliethWM
+    # ------------------------------------------------------------------
+    def _quit():
+        log.info("Hotkey Alt+Shift+Q: cerrando SauliethWM")
+        print("\n" + ws_manager.get_status_summary())
+        wm.stop()
+
+    result = hk_manager.register(
+        modifiers=MOD_ALT | MOD_SHIFT,
+        vk=win32.VK_Q,
+        callback=_quit,
+        description="Quit SauliethWM",
+    )
+    if result is not None:
+        registered += 1
+
     log.info(
         "Workspace hotkeys registered: %d of %d",
         registered,
-        len(_WS_VK_MAP) * 2,
+        len(_WS_VK_MAP) * 2 + 1,
     )
 
     return registered
