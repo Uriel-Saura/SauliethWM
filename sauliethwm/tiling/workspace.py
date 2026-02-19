@@ -311,10 +311,10 @@ class Workspace:
         log.debug("WS %d: ocultadas %d ventanas", self._id, self.window_count)
 
     def show_all_windows(self) -> None:
-        """Muestra todas las ventanas del workspace con SW_SHOW."""
+        """Muestra todas las ventanas del workspace con SW_SHOWNOACTIVATE."""
         for window in self.all_windows:
             if window.is_valid:
-                win32.show_window(window.hwnd, win32.SW_NORMAL)
+                win32.show_window(window.hwnd, win32.SW_SHOWNOACTIVATE)
         log.debug("WS %d: mostradas %d ventanas", self._id, self.window_count)
 
     # ------------------------------------------------------------------

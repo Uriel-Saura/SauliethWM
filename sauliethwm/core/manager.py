@@ -96,6 +96,16 @@ class WindowManager:
         # Flag to request stop
         self._running: bool = False
 
+        # Suppression flag: when True, hide/show events are ignored
+        # to prevent feedback loops during workspace switching.
+        self._suppress_hide_show: bool = False
+
+        # Set of HWNDs whose hide/show events should be ignored even
+        # after _suppress_hide_show is turned off.  Cleared explicitly
+        # via clear_suppressed_hwnds().  This handles the race where
+        # WinEvents arrive asynchronously after resume_events().
+        self._suppressed_hwnds: set[int] = set()
+
         # Thread ID of the message loop (needed for cross-thread stop)
         self._loop_thread_id: int = 0
 
@@ -148,6 +158,34 @@ class WindowManager:
         Must be called before start().
         """
         self._hotkey_manager = hk_manager
+
+    def suppress_events(self) -> None:
+        """
+        Start suppressing hide/show events.
+
+        Call this before programmatically hiding/showing windows
+        (e.g. workspace switch) to prevent the WinEventHook from
+        unmanaging/re-managing windows that are being hidden/shown
+        intentionally by the workspace manager.
+        """
+        self._suppress_hide_show = True
+
+    def resume_events(self) -> None:
+        """Stop suppressing hide/show events."""
+        self._suppress_hide_show = False
+
+    def add_suppressed_hwnds(self, hwnds: set[int]) -> None:
+        """
+        Register HWNDs that were just hidden/shown programmatically.
+
+        Late-arriving WinEvents for these HWNDs will be ignored even
+        after the global suppression flag is turned off.
+        """
+        self._suppressed_hwnds.update(hwnds)
+
+    def clear_suppressed_hwnds(self) -> None:
+        """Clear the per-HWND suppression set after events have settled."""
+        self._suppressed_hwnds.clear()
 
     # ------------------------------------------------------------------
     # Internal: emit events
@@ -284,18 +322,46 @@ class WindowManager:
     # ------------------------------------------------------------------
     def _handle_show(self, hwnd: int) -> None:
         """A window became visible - check if it should be managed."""
+        if self._suppress_hide_show:
+            return
+        if hwnd in self._suppressed_hwnds:
+            self._suppressed_hwnds.discard(hwnd)
+            return
         self._manage(hwnd)
 
     def _handle_destroy(self, hwnd: int) -> None:
         """A window was destroyed."""
+        self._suppressed_hwnds.discard(hwnd)
+        if self._suppress_hide_show:
+            # During workspace switching, only remove from the internal
+            # tracking dict but do NOT emit WINDOW_REMOVED so the
+            # workspace handler doesn't try to retile mid-switch.
+            window = self._windows.pop(hwnd, None)
+            if window is not None:
+                log.debug("DESTROY (suppressed) %s", window)
+                if self._focused is not None and self._focused.hwnd == hwnd:
+                    self._focused = None
+            return
         self._unmanage(hwnd)
 
     def _handle_hide(self, hwnd: int) -> None:
-        """A window became invisible - unmanage it."""
+        """A window became invisible - unmanage it (unless suppressed)."""
+        if self._suppress_hide_show:
+            return
+        if hwnd in self._suppressed_hwnds:
+            self._suppressed_hwnds.discard(hwnd)
+            return
         self._unmanage(hwnd)
 
     def _handle_foreground(self, hwnd: int) -> None:
         """The foreground window changed."""
+        # During workspace switching, ignore foreground changes to avoid
+        # re-managing windows from inactive workspaces.
+        if self._suppress_hide_show:
+            return
+        if hwnd in self._suppressed_hwnds:
+            return
+
         # If it's a new window we haven't seen, try to manage it
         if hwnd not in self._windows:
             self._manage(hwnd)
@@ -315,6 +381,8 @@ class WindowManager:
 
     def _handle_restore(self, hwnd: int) -> None:
         """A window was restored from minimized state."""
+        if self._suppress_hide_show:
+            return
         # It might be new to us
         if hwnd not in self._windows:
             self._manage(hwnd)

@@ -30,8 +30,10 @@ WM_CLOSE = 0x0010
 # ShowWindow commands
 SW_HIDE = 0
 SW_NORMAL = 1
-SW_MINIMIZE = 6
 SW_MAXIMIZE = 3
+SW_SHOWNOACTIVATE = 4
+SW_SHOW = 5
+SW_MINIMIZE = 6
 SW_RESTORE = 9
 
 # GetWindowLong indices
@@ -328,6 +330,9 @@ VK_6 = 0x36
 VK_7 = 0x37
 VK_8 = 0x38
 VK_9 = 0x39
+
+# Letter keys
+VK_Q = 0x51
 
 
 def post_thread_message(thread_id: int, msg: int, wparam: int = 0, lparam: int = 0) -> bool:
