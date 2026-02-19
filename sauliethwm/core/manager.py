@@ -24,6 +24,7 @@ from typing import Optional
 from sauliethwm.core import win32
 from sauliethwm.core.window import Window
 from sauliethwm.core.filter import is_manageable, enumerate_manageable_windows
+from sauliethwm.core.keybinds import HotkeyManager
 
 log = logging.getLogger(__name__)
 
@@ -98,6 +99,9 @@ class WindowManager:
         # Thread ID of the message loop (needed for cross-thread stop)
         self._loop_thread_id: int = 0
 
+        # Optional hotkey manager for global keybindings
+        self._hotkey_manager: Optional[HotkeyManager] = None
+
     # ------------------------------------------------------------------
     # Public: window access
     # ------------------------------------------------------------------
@@ -136,6 +140,14 @@ class WindowManager:
         """Register a callback for ALL events."""
         for ev in WMEvent:
             self._subscribers[ev].append(callback)
+
+    def set_hotkey_manager(self, hk_manager: HotkeyManager) -> None:
+        """
+        Attach a HotkeyManager so WM_HOTKEY messages are dispatched.
+
+        Must be called before start().
+        """
+        self._hotkey_manager = hk_manager
 
     # ------------------------------------------------------------------
     # Internal: emit events
@@ -379,6 +391,13 @@ class WindowManager:
             got_msg, msg = win32.get_message()
             if not got_msg:
                 break
+
+            # Intercept WM_HOTKEY for the keybind system
+            if msg.message == win32.WM_HOTKEY and self._hotkey_manager is not None:
+                hotkey_id = msg.wParam
+                self._hotkey_manager.dispatch(hotkey_id)
+                continue
+
             win32.translate_and_dispatch(msg)
 
         # Cleanup
@@ -401,6 +420,10 @@ class WindowManager:
 
     def _cleanup(self) -> None:
         """Unhook and release resources."""
+        # Unregister all hotkeys
+        if self._hotkey_manager is not None:
+            self._hotkey_manager.unregister_all()
+
         if self._hook_handle:
             win32.unhook_win_event(self._hook_handle)
             self._hook_handle = 0

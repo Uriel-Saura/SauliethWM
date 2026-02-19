@@ -9,7 +9,9 @@ import sys
 
 from sauliethwm.core.manager import WindowManager, WMEvent
 from sauliethwm.core.window import Window
+from sauliethwm.core.keybinds import HotkeyManager
 from sauliethwm.tiling.workspace_manager import WorkspaceManager
+from sauliethwm.config.hotkeys import register_workspace_hotkeys
 
 
 class SafeStreamHandler(logging.StreamHandler):
@@ -129,6 +131,11 @@ def main() -> None:
     wm.on(WMEvent.WINDOW_RESTORED, ws_handler)
     wm.on(WMEvent.WINDOW_MINIMIZED, ws_handler)
 
+    # Configurar hotkeys globales
+    hk_manager = HotkeyManager()
+    hk_count = register_workspace_hotkeys(hk_manager, ws_manager, wm)
+    wm.set_hotkey_manager(hk_manager)
+
     # Suscribir logger global de eventos
     wm.on_all(on_event)
 
@@ -138,9 +145,14 @@ def main() -> None:
     print("  SauliethWM event loop running. Press Ctrl+C to stop.")
     print(f"  Monitors: {ws_manager.monitor_count}")
     print(f"  Workspaces: {ws_manager.workspace_count}")
+    print(f"  Hotkeys: {hk_count}")
     for mi in range(ws_manager.monitor_count):
         ws = ws_manager.get_active_workspace(mi)
         print(f"  Monitor {mi}: Workspace {ws.id} ({ws.layout_name})")
+    print("")
+    print("  Keybindings:")
+    print("    Alt + 1..9          Switch workspace")
+    print("    Alt + Shift + 1..9  Move window to workspace")
     print("=" * 60 + "\n")
 
     # Enter the blocking event loop
