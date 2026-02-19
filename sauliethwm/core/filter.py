@@ -12,7 +12,6 @@ The rules here are the single source of truth.  If a window passes
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from sauliethwm.core import win32
 from sauliethwm.core.window import Window
@@ -183,37 +182,4 @@ def enumerate_manageable_windows() -> list[Window]:
     return sorted(results, key=lambda w: w.title.lower())
 
 
-def describe_filter_result(window: Window) -> str:
-    """
-    Human-readable explanation of WHY a window was accepted or rejected.
-    Useful for debugging.
-    """
-    hwnd = window.hwnd
-    reasons: list[str] = []
 
-    if not window.is_valid:
-        reasons.append("INVALID HWND")
-    if not window.is_visible:
-        reasons.append("not visible")
-    if window.is_cloaked:
-        reasons.append("cloaked (DWM)")
-    if window.is_child:
-        reasons.append(f"child window (style {window.style:#010x})")
-    if window.class_name in IGNORED_CLASSES:
-        reasons.append(f"ignored class: {window.class_name!r}")
-    if window.process_name in IGNORED_PROCESSES:
-        reasons.append(f"ignored process: {window.process_name!r}")
-    if window.title in IGNORED_TITLES:
-        reasons.append(f"ignored title: {window.title!r}")
-    if window.is_tool_window and not window.is_app_window:
-        reasons.append("tool window without WS_EX_APPWINDOW")
-    if window.is_no_activate:
-        reasons.append("WS_EX_NOACTIVATE")
-    if window.width <= 0 and window.height <= 0:
-        reasons.append("zero size")
-    if hwnd in (win32.get_shell_window(), win32.get_desktop_window()):
-        reasons.append("shell/desktop window")
-
-    if not reasons:
-        return f"[{hwnd:#010x}] {window.title!r} -> MANAGEABLE"
-    return f"[{hwnd:#010x}] {window.title!r} -> FILTERED: {', '.join(reasons)}"

@@ -18,12 +18,11 @@ from __future__ import annotations
 import enum
 import logging
 import signal
-import time
 from collections.abc import Callable
 from typing import Optional
 
 from sauliethwm.core import win32
-from sauliethwm.core.window import Window, WindowState
+from sauliethwm.core.window import Window
 from sauliethwm.core.filter import is_manageable, enumerate_manageable_windows
 
 log = logging.getLogger(__name__)
@@ -291,7 +290,6 @@ class WindowManager:
 
         window = self._windows.get(hwnd)
         if window is not None and window != self._focused:
-            old_focused = self._focused
             self._focused = window
             log.debug("FOCUS -> %s", window)
             self._emit(WMEvent.FOCUS_CHANGED, window)

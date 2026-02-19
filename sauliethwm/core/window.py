@@ -8,8 +8,6 @@ Properties read from the OS on demand so the data is always fresh.
 from __future__ import annotations
 
 import enum
-from dataclasses import dataclass, field
-from typing import Optional
 
 from sauliethwm.core import win32
 

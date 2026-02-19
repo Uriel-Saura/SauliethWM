@@ -419,44 +419,6 @@ class TilingEngine:
             self.apply()
 
     # ------------------------------------------------------------------
-    # Sincronizacion con WindowManager
-    # ------------------------------------------------------------------
-    def sync_windows(self, managed_windows: list[Window]) -> None:
-        """
-        Sincroniza la lista interna con las ventanas del WindowManager.
-
-        Agrega ventanas nuevas y elimina las que ya no existen.
-        Preserva el orden de las ventanas existentes.
-
-        Args:
-            managed_windows: Lista actual de ventanas del WindowManager.
-        """
-        managed_set = set(managed_windows)
-        current_set = set(self._windows)
-
-        # Eliminar ventanas que ya no existen
-        removed = current_set - managed_set
-        for w in removed:
-            self._windows.remove(w)
-            log.debug("TILE SYNC REMOVE %s", w)
-
-        # Agregar ventanas nuevas
-        added = managed_set - current_set
-        for w in added:
-            self._windows.append(w)
-            log.debug("TILE SYNC ADD %s", w)
-
-        if removed or added:
-            log.info(
-                "TILE SYNC: +%d -%d = %d ventanas",
-                len(added),
-                len(removed),
-                len(self._windows),
-            )
-            if self._auto_apply:
-                self.apply()
-
-    # ------------------------------------------------------------------
     # Informacion / debug
     # ------------------------------------------------------------------
     def dump_state(self) -> str:

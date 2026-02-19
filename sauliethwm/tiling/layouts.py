@@ -16,12 +16,8 @@ from __future__ import annotations
 
 import abc
 import enum
-import logging
-from dataclasses import dataclass, field
 
 from sauliethwm.tiling.rect import Rect
-
-log = logging.getLogger(__name__)
 
 
 # ============================================================================
