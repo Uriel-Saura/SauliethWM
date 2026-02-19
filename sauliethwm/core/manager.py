@@ -195,6 +195,7 @@ class WindowManager:
         for w in enumerate_manageable_windows():
             self._windows[w.hwnd] = w
             log.info("INITIAL %s", w)
+            self._emit(WMEvent.WINDOW_ADDED, w)
 
         # Set current focus
         fg_hwnd = win32.get_foreground_window()

@@ -9,6 +9,7 @@ import sys
 
 from sauliethwm.core.manager import WindowManager, WMEvent
 from sauliethwm.core.window import Window
+from sauliethwm.tiling.engine import TilingEngine
 
 
 class SafeStreamHandler(logging.StreamHandler):
@@ -60,21 +61,77 @@ def on_event(event: WMEvent, window: Window | None, wm: WindowManager) -> None:
         print(f"  EVENT: {event.value}")
 
 
+def create_tiling_handler(engine: TilingEngine):
+    """
+    Crea un callback que conecta los eventos del WindowManager
+    con el TilingEngine para reorganizar automaticamente.
+
+    El handler reacciona a:
+        - WINDOW_ADDED:     Agrega la ventana al tiling y reorganiza.
+        - WINDOW_REMOVED:   Elimina la ventana del tiling y reorganiza.
+        - WINDOW_RESTORED:  Re-aplica el layout (la ventana vuelve a su lugar).
+        - WINDOW_MINIMIZED: Elimina temporalmente del tiling y reorganiza.
+    """
+
+    def tiling_handler(
+        event: WMEvent, window: Window | None, wm: WindowManager
+    ) -> None:
+        if window is None:
+            return
+
+        if event == WMEvent.WINDOW_ADDED:
+            engine.add_window(window)
+
+        elif event == WMEvent.WINDOW_REMOVED:
+            engine.remove_window(window)
+
+        elif event == WMEvent.WINDOW_RESTORED:
+            # La ventana vuelve de minimizada: asegurar que esta en el tiling
+            if not engine.contains(window):
+                engine.add_window(window)
+            else:
+                engine.apply()
+
+        elif event == WMEvent.WINDOW_MINIMIZED:
+            # Sacar del tiling para que las demas ocupen su espacio
+            engine.remove_window(window)
+
+    return tiling_handler
+
+
 def main() -> None:
     setup_logging()
 
     wm = WindowManager()
 
-    # Subscribe to all events
+    # Crear el motor de tiling
+    engine = TilingEngine(auto_apply=True)
+
+    # Sincronizar con las ventanas existentes despues del scan inicial
+    # (el scan ocurre dentro de wm.start(), asi que conectamos via eventos)
+
+    # Conectar eventos del WM al tiling engine
+    tiling_handler = create_tiling_handler(engine)
+    wm.on(WMEvent.WINDOW_ADDED, tiling_handler)
+    wm.on(WMEvent.WINDOW_REMOVED, tiling_handler)
+    wm.on(WMEvent.WINDOW_RESTORED, tiling_handler)
+    wm.on(WMEvent.WINDOW_MINIMIZED, tiling_handler)
+
+    # Suscribir logger global de eventos
     wm.on_all(on_event)
 
     # Show initial state
     print("\n" + wm.dump_state() + "\n")
+    print("\n" + engine.dump_state() + "\n")
     print("=" * 60)
     print("  SauliethWM event loop running. Press Ctrl+C to stop.")
+    print(f"  Layout: {engine.layout_name}")
+    print(f"  Work area: {engine.work_area}")
     print("=" * 60 + "\n")
 
     # Enter the blocking event loop
+    # (wm.start() does the initial scan and emits WINDOW_ADDED for each,
+    #  which triggers the tiling handler to add them to the engine)
     wm.start()
 
 
