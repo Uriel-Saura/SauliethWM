@@ -293,3 +293,52 @@ class WideLayout(Layout):
             stack_rects.append(r)
 
         return [master_rect] + stack_rects
+
+
+# ============================================================================
+# MonocleLayout - Una ventana ocupa toda el area
+# ============================================================================
+class MonocleLayout(Layout):
+    """
+    Layout tipo 'monocle' (pantalla completa).
+
+    Todas las ventanas reciben el mismo rectangulo (el area completa),
+    de modo que se apilan una sobre otra. Solo la ventana con foco
+    es visible en la practica.
+
+    Esquema:
+        +------------------+
+        |                  |
+        |    1 (activa)    |
+        |                  |
+        +------------------+
+        (2, 3, ... detras)
+    """
+
+    @property
+    def layout_type(self) -> LayoutType:
+        return LayoutType.MONOCLE
+
+    @property
+    def name(self) -> str:
+        return "Monocle"
+
+    def arrange(self, count: int, area: Rect) -> list[Rect]:
+        """
+        Calcula posiciones para un layout monocle.
+
+        Todas las ventanas reciben la misma posicion: el area completa
+        con gap exterior aplicado.
+
+        Args:
+            count: Numero de ventanas.
+            area:  Area disponible del monitor.
+
+        Returns:
+            Lista de Rect identicos, uno por ventana.
+        """
+        if count <= 0:
+            return []
+
+        full = area.pad(self._gap)
+        return [full] * count
