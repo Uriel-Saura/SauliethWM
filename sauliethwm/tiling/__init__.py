@@ -2,10 +2,12 @@
 sauliethwm.tiling - Motor de tiling (organizacion automatica de ventanas).
 
 Este paquete contiene:
-    - rect    : Estructura Rect para geometria de areas
-    - monitor : Deteccion del area disponible del monitor
-    - layouts : Layouts de tiling (Tall, Wide, Monocle, ThreeColumn)
-    - engine  : TilingEngine - motor principal de organizacion
+    - rect              : Estructura Rect para geometria de areas
+    - monitor           : Deteccion del area disponible del monitor
+    - layouts           : Layouts de tiling (Tall, Wide, Monocle, ThreeColumn)
+    - engine            : TilingEngine - motor principal de organizacion
+    - workspace         : Workspace - workspace virtual con layout independiente
+    - workspace_manager : WorkspaceManager - gestor de workspaces y monitores
 """
 
 from sauliethwm.tiling.rect import Rect
@@ -19,6 +21,8 @@ from sauliethwm.tiling.layouts import (
     ThreeColumnLayout,
 )
 from sauliethwm.tiling.engine import TilingEngine
+from sauliethwm.tiling.workspace import Workspace
+from sauliethwm.tiling.workspace_manager import WorkspaceManager
 
 __all__ = [
     "Rect",
@@ -32,4 +36,6 @@ __all__ = [
     "MonocleLayout",
     "ThreeColumnLayout",
     "TilingEngine",
+    "Workspace",
+    "WorkspaceManager",
 ]

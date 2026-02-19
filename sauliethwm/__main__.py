@@ -9,7 +9,7 @@ import sys
 
 from sauliethwm.core.manager import WindowManager, WMEvent
 from sauliethwm.core.window import Window
-from sauliethwm.tiling.engine import TilingEngine
+from sauliethwm.tiling.workspace_manager import WorkspaceManager
 
 
 class SafeStreamHandler(logging.StreamHandler):
@@ -41,7 +41,7 @@ def setup_logging() -> None:
 
 
 def on_event(event: WMEvent, window: Window | None, wm: WindowManager) -> None:
-    """Example global event handler that logs everything."""
+    """Global event handler that logs everything."""
     safe_title = ""
     if window is not None:
         try:
@@ -61,42 +61,54 @@ def on_event(event: WMEvent, window: Window | None, wm: WindowManager) -> None:
         print(f"  EVENT: {event.value}")
 
 
-def create_tiling_handler(engine: TilingEngine):
+def create_workspace_handler(ws_manager: WorkspaceManager):
     """
     Crea un callback que conecta los eventos del WindowManager
-    con el TilingEngine para reorganizar automaticamente.
+    con el WorkspaceManager para gestionar ventanas en workspaces.
 
     El handler reacciona a:
-        - WINDOW_ADDED:     Agrega la ventana al tiling y reorganiza.
-        - WINDOW_REMOVED:   Elimina la ventana del tiling y reorganiza.
-        - WINDOW_RESTORED:  Re-aplica el layout (la ventana vuelve a su lugar).
-        - WINDOW_MINIMIZED: Elimina temporalmente del tiling y reorganiza.
+        - WINDOW_ADDED:     Agrega la ventana al workspace activo y retilea.
+        - WINDOW_REMOVED:   Elimina la ventana de su workspace y retilea.
+        - WINDOW_RESTORED:  Re-agrega al workspace si no esta, o retilea.
+        - WINDOW_MINIMIZED: Elimina temporalmente del workspace y retilea.
     """
 
-    def tiling_handler(
+    def workspace_handler(
         event: WMEvent, window: Window | None, wm: WindowManager
     ) -> None:
         if window is None:
             return
 
         if event == WMEvent.WINDOW_ADDED:
-            engine.add_window(window)
+            ws_manager.add_window(window)
 
         elif event == WMEvent.WINDOW_REMOVED:
-            engine.remove_window(window)
+            ws_manager.remove_window(window)
 
         elif event == WMEvent.WINDOW_RESTORED:
-            # La ventana vuelve de minimizada: asegurar que esta en el tiling
-            if not engine.contains(window):
-                engine.add_window(window)
+            # La ventana vuelve de minimizada: asegurar que esta en un workspace
+            ws = ws_manager.find_window_workspace(window)
+            if ws is None:
+                ws_manager.add_window(window)
             else:
-                engine.apply()
+                # Retilear su workspace si esta activo
+                mi = ws_manager.get_monitor_for_workspace(ws.id)
+                if mi is not None:
+                    ws_manager.retile(mi)
 
         elif event == WMEvent.WINDOW_MINIMIZED:
-            # Sacar del tiling para que las demas ocupen su espacio
-            engine.remove_window(window)
+            # Sacar del workspace para que las demas ocupen su espacio
+            ws_manager.remove_window(window)
 
-    return tiling_handler
+    return workspace_handler
+
+
+def on_workspace_changed(monitor_index: int, old_ws_id: int, new_ws_id: int) -> None:
+    """Callback que se ejecuta cuando cambia el workspace activo."""
+    print(
+        f"  WORKSPACE CHANGED: monitor {monitor_index} | "
+        f"ws {old_ws_id} -> ws {new_ws_id}"
+    )
 
 
 def main() -> None:
@@ -104,35 +116,40 @@ def main() -> None:
 
     wm = WindowManager()
 
-    # Crear el motor de tiling
-    engine = TilingEngine(auto_apply=True)
+    # Crear el gestor de workspaces (reemplaza al TilingEngine directo)
+    ws_manager = WorkspaceManager()
 
-    # Sincronizar con las ventanas existentes despues del scan inicial
-    # (el scan ocurre dentro de wm.start(), asi que conectamos via eventos)
+    # Registrar callback de cambio de workspace
+    ws_manager.on_workspace_changed(on_workspace_changed)
 
-    # Conectar eventos del WM al tiling engine
-    tiling_handler = create_tiling_handler(engine)
-    wm.on(WMEvent.WINDOW_ADDED, tiling_handler)
-    wm.on(WMEvent.WINDOW_REMOVED, tiling_handler)
-    wm.on(WMEvent.WINDOW_RESTORED, tiling_handler)
-    wm.on(WMEvent.WINDOW_MINIMIZED, tiling_handler)
+    # Conectar eventos del WM al WorkspaceManager
+    ws_handler = create_workspace_handler(ws_manager)
+    wm.on(WMEvent.WINDOW_ADDED, ws_handler)
+    wm.on(WMEvent.WINDOW_REMOVED, ws_handler)
+    wm.on(WMEvent.WINDOW_RESTORED, ws_handler)
+    wm.on(WMEvent.WINDOW_MINIMIZED, ws_handler)
 
     # Suscribir logger global de eventos
     wm.on_all(on_event)
 
     # Show initial state
     print("\n" + wm.dump_state() + "\n")
-    print("\n" + engine.dump_state() + "\n")
     print("=" * 60)
     print("  SauliethWM event loop running. Press Ctrl+C to stop.")
-    print(f"  Layout: {engine.layout_name}")
-    print(f"  Work area: {engine.work_area}")
+    print(f"  Monitors: {ws_manager.monitor_count}")
+    print(f"  Workspaces: {ws_manager.workspace_count}")
+    for mi in range(ws_manager.monitor_count):
+        ws = ws_manager.get_active_workspace(mi)
+        print(f"  Monitor {mi}: Workspace {ws.id} ({ws.layout_name})")
     print("=" * 60 + "\n")
 
     # Enter the blocking event loop
     # (wm.start() does the initial scan and emits WINDOW_ADDED for each,
-    #  which triggers the tiling handler to add them to the engine)
+    #  which triggers the workspace handler to add them to the active ws)
     wm.start()
+
+    # Print final state
+    print("\n" + ws_manager.dump_state())
 
 
 if __name__ == "__main__":
