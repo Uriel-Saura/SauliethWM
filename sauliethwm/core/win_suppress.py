@@ -152,49 +152,57 @@ class WinKeySuppressor:
         Low-level keyboard hook callback.
 
         Called for every keyboard event system-wide.
+
+        IMPORTANT: This runs inside a ctypes callback — any unhandled
+        Python exception here causes "Exception ignored while calling
+        ctypes callback function". We wrap everything in try/except
+        and always fall through to CallNextHookEx on error.
         """
-        if nCode < 0:
-            return user32.CallNextHookEx(0, nCode, wParam, lParam)
+        try:
+            if nCode < 0:
+                return user32.CallNextHookEx(0, nCode, wParam, lParam)
 
-        # Cast lParam to KBDLLHOOKSTRUCT pointer
-        kb = ctypes.cast(lParam, ctypes.POINTER(KBDLLHOOKSTRUCT)).contents
-        vk = kb.vkCode
+            # Cast lParam to KBDLLHOOKSTRUCT pointer
+            kb = ctypes.cast(
+                lParam, ctypes.POINTER(KBDLLHOOKSTRUCT)
+            ).contents
+            vk = kb.vkCode
 
-        is_win_key = vk in (VK_LWIN, VK_RWIN)
+            is_win_key = vk in (VK_LWIN, VK_RWIN)
 
-        if wParam in (WM_KEYDOWN, WM_SYSKEYDOWN):
-            if is_win_key:
-                # Win key pressed
-                if not self._win_pressed:
-                    self._win_pressed = True
+            if wParam in (WM_KEYDOWN, WM_SYSKEYDOWN):
+                if is_win_key:
+                    # Win key pressed
+                    if not self._win_pressed:
+                        self._win_pressed = True
+                        self._win_used_in_combo = False
+                else:
+                    # Another key pressed while Win is held
+                    if self._win_pressed:
+                        self._win_used_in_combo = True
+
+            elif wParam in (WM_KEYUP, WM_SYSKEYUP):
+                if is_win_key:
+                    # Win key released
+                    should_suppress = False
+
+                    if self._win_used_in_combo:
+                        # Win was used as modifier in a combo -> suppress
+                        should_suppress = True
+                    elif self._suppress_standalone:
+                        # Standalone Win tap -> suppress if configured
+                        should_suppress = True
+
+                    self._win_pressed = False
                     self._win_used_in_combo = False
-            else:
-                # Another key pressed while Win is held
-                if self._win_pressed:
-                    self._win_used_in_combo = True
 
-        elif wParam in (WM_KEYUP, WM_SYSKEYUP):
-            if is_win_key:
-                # Win key released
-                should_suppress = False
+                    if should_suppress:
+                        # Eat the key-up event to prevent Start menu
+                        return 1  # Non-zero = swallow the event
 
-                if self._win_used_in_combo:
-                    # Win was used as modifier in a combo -> suppress
-                    should_suppress = True
-                elif self._suppress_standalone:
-                    # Standalone Win tap -> suppress if configured
-                    should_suppress = True
+        except Exception:
+            # Never let an exception propagate into the C caller.
+            pass
 
-                self._win_pressed = False
-                self._win_used_in_combo = False
-
-                if should_suppress:
-                    # Eat the key-up event to prevent Start menu
-                    log.debug(
-                        "WinKeySuppressor: suppressed Win key-up (vk=0x%02X)",
-                        vk,
-                    )
-                    return 1  # Non-zero = swallow the event
-
-        # Pass through
+        # Pass through (also the fallback on error)
         return user32.CallNextHookEx(0, nCode, wParam, lParam)

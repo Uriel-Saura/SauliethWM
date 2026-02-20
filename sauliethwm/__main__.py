@@ -14,7 +14,7 @@ from sauliethwm.core.keybinds import HotkeyManager
 from sauliethwm.core.commands import CommandDispatcher, build_default_commands
 from sauliethwm.core.win_suppress import WinKeySuppressor
 from sauliethwm.tiling.workspace_manager import WorkspaceManager
-from sauliethwm.config.hotkeys import register_workspace_hotkeys
+from sauliethwm.config.hotkeys import register_all_hotkeys
 
 
 class SafeStreamHandler(logging.StreamHandler):
@@ -172,14 +172,16 @@ def main() -> None:
     wm.on(WMEvent.WINDOW_RESTORED, ws_handler)
     wm.on(WMEvent.WINDOW_MINIMIZED, ws_handler)
 
-    # Configurar hotkeys globales
+    # Configurar hotkeys globales y dispatcher de comandos
     hk_manager = HotkeyManager()
-    hk_count = register_workspace_hotkeys(hk_manager, ws_manager, wm)
     wm.set_hotkey_manager(hk_manager)
 
     # Registrar todos los comandos internos en el dispatcher (Phase 4)
     dispatcher = CommandDispatcher()
     build_default_commands(dispatcher, wm, ws_manager, hk_manager)
+
+    # Vincular hotkeys a comandos del dispatcher
+    hk_count = register_all_hotkeys(hk_manager, dispatcher)
 
     # Suprimir tecla Win del sistema para evitar que abra el menu inicio
     # cuando se usa como modificador en hotkeys del WM (Phase 4.9)
@@ -203,9 +205,21 @@ def main() -> None:
         print(f"  Monitor {mi}: Workspace {ws.id} ({ws.layout_name})")
     print("")
     print("  Keybindings:")
-    print("    Alt + 1..9          Switch workspace")
-    print("    Alt + Shift + 1..9  Move window to workspace")
-    print("    Alt + Shift + Q     Quit SauliethWM")
+    print("    Win + 1..9            Switch workspace")
+    print("    Win + Shift + 1..9    Move window to workspace")
+    print("    Win + H/J/K/L         Focus left/down/up/right")
+    print("    Win + Shift + H/J/K/L Move window left/down/up/right")
+    print("    Win + Shift + C       Close focused window")
+    print("    Win + Shift + M       Swap with master")
+    print("    Win + Space           Next layout")
+    print("    Win + Shift + Space   Previous layout")
+    print("    Win + =/−             Grow/shrink master")
+    print("    Win + Shift + =/−     Increase/decrease gap")
+    print("    Win + R               Resize mode (arrows, Esc to exit)")
+    print("    Win + Return          Launch terminal")
+    print("    Win + E               Launch explorer")
+    print("    Win + Shift + R       Retile all")
+    print("    Win + Shift + Q       Quit SauliethWM")
     print("=" * 60 + "\n")
 
     # Enter the blocking event loop
