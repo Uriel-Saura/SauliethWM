@@ -435,10 +435,14 @@ class WorkspaceManager:
         Mueve una ventana de su workspace actual al workspace destino.
 
         Proceso:
-            1. Remover la ventana de su workspace actual.
-            2. Retilear el workspace origen.
-            3. Agregar al workspace destino.
-            4. Si el destino esta activo, retilear. Si no, ocultar.
+            1. Registrar HWND en _suppressed_hwnds para ignorar eventos
+               tardios de hide/show/foreground sobre esta ventana.
+            2. Remover la ventana de su workspace actual.
+            3. Retilear el workspace origen.
+            4. Agregar al workspace destino.
+            5. Si el destino esta activo, retilear. Si no, ocultar.
+            6. Re-registrar la ventana en WindowManager._windows para
+               que no se pierda al cambiar al workspace destino.
 
         Args:
             window:       Ventana a mover.
@@ -463,19 +467,27 @@ class WorkspaceManager:
             log.warning("move_window_to_workspace: ventana no encontrada")
             return False
 
-        # 1. Remover del origen
+        # 1. Registrar el HWND para supresion de eventos tardios.
+        #    Esto evita que _handle_hide/_handle_foreground procesen
+        #    eventos asincrono para esta ventana despues de resume_events(),
+        #    lo cual causaria _unmanage() -> WINDOW_REMOVED -> remove_window()
+        #    eliminando la ventana del workspace destino.
+        if self._wm is not None:
+            self._wm.add_suppressed_hwnds({window.hwnd})
+
+        # 2. Remover del origen
         source_ws.remove_window(window)
 
-        # 2. Retilear origen si esta activo
+        # 3. Retilear origen si esta activo
         if source_ws.is_active:
             mi = self.get_monitor_for_workspace(source_ws.id)
             if mi is not None:
                 source_ws.retile(self._monitors[mi].work_rect)
 
-        # 3. Agregar al destino
+        # 4. Agregar al destino
         target_ws.add_window(window)
 
-        # 4. Si el destino esta activo, retilear; si no, ocultar ventana
+        # 5. Si el destino esta activo, retilear; si no, ocultar ventana
         if target_ws.is_active:
             mi = self.get_monitor_for_workspace(target_ws.id)
             if mi is not None:
@@ -488,6 +500,15 @@ class WorkspaceManager:
                     win32.show_window(window.hwnd, win32.SW_HIDE)
             finally:
                 self._resume_events()
+
+            # 6. Re-registrar la ventana en _windows del WindowManager.
+            #    El SW_HIDE puede haber disparado _handle_hide sincronamente
+            #    (dentro de suppress_events, asi que fue ignorado), pero
+            #    necesitamos asegurar que la ventana siga en _windows para
+            #    que _ensure_windows_tracked la encuentre al cambiar
+            #    al workspace destino.
+            if self._wm is not None and window.is_valid:
+                self._wm._windows[window.hwnd] = window
 
         log.info(
             "MOVE ventana %s: ws %d -> ws %d",

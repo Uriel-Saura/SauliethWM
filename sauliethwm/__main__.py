@@ -90,6 +90,13 @@ def create_workspace_handler(ws_manager: WorkspaceManager):
             ws_manager.add_window(window)
 
         elif event == WMEvent.WINDOW_REMOVED:
+            # Solo remover si la ventana esta en un workspace activo.
+            # Si esta en un workspace inactivo, fue movida ahi
+            # intencionalmente y no debe ser removida por eventos
+            # tardios de hide que disparan _unmanage -> WINDOW_REMOVED.
+            ws = ws_manager.find_window_workspace(window)
+            if ws is not None and not ws.is_active:
+                return
             ws_manager.remove_window(window)
 
         elif event == WMEvent.WINDOW_RESTORED:
