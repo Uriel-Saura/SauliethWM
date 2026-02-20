@@ -258,17 +258,50 @@ class Workspace:
     # ------------------------------------------------------------------
     # Retile: calcula y aplica posiciones
     # ------------------------------------------------------------------
-    def retile(self, work_area: Rect) -> None:
+    def retile(self, work_area: Rect, monitor_full_rect: Rect | None = None) -> None:
         """
         Recalcula y aplica el layout a las ventanas tileadas.
 
-        El workspace no conoce el monitor; recibe el area de trabajo
+        Ventanas en modo fullscreen son excluidas del layout y se
+        reposicionan para cubrir el monitor completo. Las demas ventanas
+        participan normalmente en el layout.
+
+        El workspace NO conoce el monitor: recibe el area de trabajo
         como parametro del exterior.
 
         Args:
-            work_area: Area disponible para tilear (Rect del monitor).
+            work_area:         Area disponible para tilear (Rect del monitor).
+            monitor_full_rect: Area total del monitor (para fullscreen).
+                               Si None, se usa work_area como fallback.
         """
-        count = len(self._tiled_windows)
+        if not self._tiled_windows:
+            return
+
+        full = monitor_full_rect or work_area
+
+        # Separar ventanas fullscreen de las tileables
+        fullscreen_wins: list[Window] = []
+        tileable_wins: list[Window] = []
+
+        for w in self._tiled_windows:
+            if w.is_fullscreen:
+                fullscreen_wins.append(w)
+            else:
+                tileable_wins.append(w)
+
+        # Reposicionar ventanas fullscreen al monitor completo
+        for window in fullscreen_wins:
+            try:
+                if not window.is_valid:
+                    continue
+                window.reapply_fullscreen(full.x, full.y, full.w, full.h)
+            except Exception:
+                log.exception(
+                    "WS %d: error reapplying fullscreen %s", self._id, window
+                )
+
+        # Layout normal para las ventanas tileables
+        count = len(tileable_wins)
         if count == 0:
             return
 
@@ -285,7 +318,7 @@ class Workspace:
             )
             return
 
-        for window, rect in zip(self._tiled_windows, rects):
+        for window, rect in zip(tileable_wins, rects):
             try:
                 if not window.is_valid:
                     log.warning("WS %d: ventana invalida %s", self._id, window)
@@ -303,10 +336,11 @@ class Workspace:
                 )
 
         log.debug(
-            "WS %d retile: %s | %d ventanas | area=%s",
+            "WS %d retile: %s | %d tiled + %d fullscreen | area=%s",
             self._id,
             layout.name,
             count,
+            len(fullscreen_wins),
             work_area,
         )
 
@@ -357,7 +391,8 @@ class Workspace:
         ]
         for i, w in enumerate(self._tiled_windows):
             role = "master" if i == 0 else f"stack-{i}"
-            lines.append(f"    [{role}] {w}")
+            fs = " [FULLSCREEN]" if w.is_fullscreen else ""
+            lines.append(f"    [{role}] {w}{fs}")
         for w in self._floating_windows:
             lines.append(f"    [float] {w}")
         return "\n".join(lines)
