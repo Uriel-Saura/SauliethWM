@@ -8,8 +8,11 @@ Properties read from the OS on demand so the data is always fresh.
 from __future__ import annotations
 
 import enum
+import logging
 
 from sauliethwm.core import win32
+
+log = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -38,10 +41,20 @@ class Window:
     be safely used in sets and as dict keys.
     """
 
-    __slots__ = ("_hwnd",)
+    __slots__ = (
+        "_hwnd",
+        "_fullscreen",
+        "_saved_style",
+        "_saved_ex_style",
+        "_saved_rect",
+    )
 
     def __init__(self, hwnd: int) -> None:
         self._hwnd = hwnd
+        self._fullscreen: bool = False
+        self._saved_style: int = 0
+        self._saved_ex_style: int = 0
+        self._saved_rect: tuple[int, int, int, int] = (0, 0, 0, 0)
 
     # ------------------------------------------------------------------
     # Identity
@@ -226,6 +239,214 @@ class Window:
         )
 
     # ------------------------------------------------------------------
+    # Fullscreen management
+    # ------------------------------------------------------------------
+    # Mask of style bits removed when entering fullscreen
+    _FS_STYLE_MASK = win32.WS_CAPTION | win32.WS_THICKFRAME
+
+    # Mask of extended style bits removed when entering fullscreen
+    _FS_EX_STYLE_MASK = (
+        win32.WS_EX_DLGMODALFRAME
+        | win32.WS_EX_WINDOWEDGE
+        | win32.WS_EX_CLIENTEDGE
+        | win32.WS_EX_STATICEDGE
+    )
+
+    @property
+    def is_fullscreen(self) -> bool:
+        """True if the window is in WM-managed fullscreen mode."""
+        return self._fullscreen
+
+    def enter_fullscreen(
+        self, monitor_x: int, monitor_y: int, monitor_w: int, monitor_h: int,
+    ) -> bool:
+        """
+        Put the window into borderless fullscreen mode.
+
+        Saves current styles and rect, removes decorations, and positions
+        the window to cover the entire monitor area (including taskbar).
+
+        Args:
+            monitor_x/y/w/h: Full monitor rectangle (not work area).
+
+        Returns:
+            True if the operation succeeded.
+        """
+        if self._fullscreen:
+            return False
+
+        if not self.is_valid:
+            return False
+
+        # Save original state for restoration
+        self._saved_style = self.style
+        self._saved_ex_style = self.ex_style
+        self._saved_rect = self.rect
+
+        # Restore from minimized/maximized before style change
+        if self.is_minimized or self.is_maximized:
+            self.restore()
+
+        # Remove decorations from style
+        new_style = self._saved_style & ~self._FS_STYLE_MASK
+        win32.set_window_style(self._hwnd, new_style)
+
+        # Remove extended decorations
+        new_ex = self._saved_ex_style & ~self._FS_EX_STYLE_MASK
+        win32.set_window_ex_style(self._hwnd, new_ex)
+
+        # Apply style changes and reposition to full monitor
+        win32.set_window_pos(
+            self._hwnd,
+            monitor_x, monitor_y, monitor_w, monitor_h,
+            flags=(
+                win32.SWP_NOZORDER
+                | win32.SWP_NOACTIVATE
+                | win32.SWP_FRAMECHANGED
+            ),
+        )
+
+        self._fullscreen = True
+        log.info("FULLSCREEN ON  %s", self)
+        return True
+
+    def exit_fullscreen(self) -> bool:
+        """
+        Restore the window from borderless fullscreen to its original state.
+
+        Restores the saved styles and repositions the window to its
+        previous rect.
+
+        Returns:
+            True if the operation succeeded.
+        """
+        if not self._fullscreen:
+            return False
+
+        if not self.is_valid:
+            self._fullscreen = False
+            return False
+
+        # Restore original styles
+        win32.set_window_style(self._hwnd, self._saved_style)
+        win32.set_window_ex_style(self._hwnd, self._saved_ex_style)
+
+        # Restore position with FRAMECHANGED to apply style change
+        left, top, right, bottom = self._saved_rect
+        w = right - left
+        h = bottom - top
+        win32.set_window_pos(
+            self._hwnd,
+            left, top, w, h,
+            flags=(
+                win32.SWP_NOZORDER
+                | win32.SWP_NOACTIVATE
+                | win32.SWP_FRAMECHANGED
+            ),
+        )
+
+        self._fullscreen = False
+        log.info("FULLSCREEN OFF %s", self)
+        return True
+
+    def toggle_fullscreen(
+        self, monitor_x: int, monitor_y: int, monitor_w: int, monitor_h: int,
+    ) -> bool:
+        """
+        Toggle between fullscreen and normal state.
+
+        Args:
+            monitor_x/y/w/h: Full monitor rectangle (used for enter).
+
+        Returns:
+            True if the operation succeeded.
+        """
+        if self._fullscreen:
+            return self.exit_fullscreen()
+        return self.enter_fullscreen(monitor_x, monitor_y, monitor_w, monitor_h)
+
+    def reapply_fullscreen(
+        self, monitor_x: int, monitor_y: int, monitor_w: int, monitor_h: int,
+    ) -> bool:
+        """
+        Reposition a fullscreen window to cover a (potentially different)
+        monitor. Used when a fullscreen window is moved to another
+        workspace on a different monitor.
+
+        Args:
+            monitor_x/y/w/h: Full monitor rectangle to cover.
+
+        Returns:
+            True if repositioned, False if not in fullscreen.
+        """
+        if not self._fullscreen:
+            return False
+        if not self.is_valid:
+            return False
+
+        win32.set_window_pos(
+            self._hwnd,
+            monitor_x, monitor_y, monitor_w, monitor_h,
+            flags=(
+                win32.SWP_NOZORDER
+                | win32.SWP_NOACTIVATE
+                | win32.SWP_FRAMECHANGED
+            ),
+        )
+        return True
+
+    def is_native_fullscreen(
+        self, monitor_x: int, monitor_y: int, monitor_w: int, monitor_h: int,
+    ) -> bool:
+        """
+        Detect if the window is already in a native fullscreen state
+        (e.g. a game or video player). A window is considered native
+        fullscreen if it has no caption/thick frame and covers the
+        entire monitor rectangle.
+
+        Args:
+            monitor_x/y/w/h: Full monitor rectangle to check against.
+
+        Returns:
+            True if the window appears to be natively fullscreen.
+        """
+        if not self.is_valid:
+            return False
+
+        # Must not have decorations
+        style = self.style
+        if style & win32.WS_CAPTION or style & win32.WS_THICKFRAME:
+            return False
+
+        # Must cover the monitor (with a small tolerance of 5px)
+        left, top, right, bottom = self.rect
+        tolerance = 5
+        if (
+            left <= monitor_x + tolerance
+            and top <= monitor_y + tolerance
+            and right >= monitor_x + monitor_w - tolerance
+            and bottom >= monitor_y + monitor_h - tolerance
+        ):
+            return True
+
+        return False
+
+    def mark_as_fullscreen(self) -> None:
+        """
+        Mark this window as fullscreen without modifying its styles.
+
+        Used for windows detected as natively fullscreen. Saves the
+        current state so exit_fullscreen() can restore it if needed.
+        """
+        if self._fullscreen:
+            return
+        self._saved_style = self.style
+        self._saved_ex_style = self.ex_style
+        self._saved_rect = self.rect
+        self._fullscreen = True
+        log.info("NATIVE FULLSCREEN DETECTED %s", self)
+
+    # ------------------------------------------------------------------
     # Snapshot (for logging / debugging)
     # ------------------------------------------------------------------
     def snapshot(self) -> dict:
@@ -239,6 +460,7 @@ class Window:
             "rect": self.rect,
             "state": self.state.value,
             "is_focused": self.is_focused,
+            "is_fullscreen": self._fullscreen,
             "style": hex(self.style),
             "ex_style": hex(self.ex_style),
         }
