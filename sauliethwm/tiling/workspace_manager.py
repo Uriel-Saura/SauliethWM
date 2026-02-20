@@ -512,6 +512,8 @@ class WorkspaceManager:
             self._suppress_events()
             try:
                 if window.is_valid:
+                    if window.is_fullscreen:
+                        window.suspend_fullscreen()
                     win32.show_window(window.hwnd, win32.SW_HIDE)
             finally:
                 self._resume_events()

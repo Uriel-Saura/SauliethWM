@@ -348,14 +348,31 @@ class Workspace:
     # Ocultar / Mostrar todas las ventanas
     # ------------------------------------------------------------------
     def hide_all_windows(self) -> None:
-        """Oculta todas las ventanas del workspace con SW_HIDE."""
+        """
+        Oculta todas las ventanas del workspace con SW_HIDE.
+
+        Las ventanas en fullscreen deben suspender su estado (restaurar
+        estilos originales) antes de ocultarse; de lo contrario, la
+        ventana borderless puede quedar visible encima de todo al cambiar
+        de workspace. El flag _fullscreen se preserva para que retile()
+        pueda reapply al volver al workspace.
+        """
         for window in self.all_windows:
             if window.is_valid:
+                if window.is_fullscreen:
+                    window.suspend_fullscreen()
                 win32.show_window(window.hwnd, win32.SW_HIDE)
         log.debug("WS %d: ocultadas %d ventanas", self._id, self.window_count)
 
     def show_all_windows(self) -> None:
-        """Muestra todas las ventanas del workspace con SW_SHOWNOACTIVATE."""
+        """
+        Muestra todas las ventanas del workspace con SW_SHOWNOACTIVATE.
+
+        Las ventanas que estaban en fullscreen antes de ser ocultadas
+        deben re-entrar a fullscreen. Esto se delega al retile() que se
+        llama despues de show_all_windows(), donde reapply_fullscreen()
+        reposiciona las ventanas fullscreen al rect del monitor.
+        """
         for window in self.all_windows:
             if window.is_valid:
                 win32.show_window(window.hwnd, win32.SW_SHOWNOACTIVATE)

@@ -365,13 +365,38 @@ class Window:
             return self.exit_fullscreen()
         return self.enter_fullscreen(monitor_x, monitor_y, monitor_w, monitor_h)
 
+    def suspend_fullscreen(self) -> bool:
+        """
+        Temporarily restore window styles while keeping _fullscreen True.
+
+        Used before SW_HIDE during workspace switch so that the
+        borderless window can be hidden reliably.  The fullscreen state
+        is preserved and will be re-applied by reapply_fullscreen()
+        when the workspace becomes active again.
+
+        Returns:
+            True if styles were restored, False if not in fullscreen.
+        """
+        if not self._fullscreen:
+            return False
+        if not self.is_valid:
+            return False
+
+        win32.set_window_style(self._hwnd, self._saved_style)
+        win32.set_window_ex_style(self._hwnd, self._saved_ex_style)
+        log.debug("FULLSCREEN SUSPENDED %s", self)
+        return True
+
     def reapply_fullscreen(
         self, monitor_x: int, monitor_y: int, monitor_w: int, monitor_h: int,
     ) -> bool:
         """
-        Reposition a fullscreen window to cover a (potentially different)
-        monitor. Used when a fullscreen window is moved to another
-        workspace on a different monitor.
+        Re-apply fullscreen styles and reposition the window to cover
+        the given monitor rectangle.
+
+        This is used after show_all_windows() to re-enter fullscreen
+        for windows that were suspended, and also when a fullscreen
+        window is moved to another workspace on a different monitor.
 
         Args:
             monitor_x/y/w/h: Full monitor rectangle to cover.
@@ -383,6 +408,18 @@ class Window:
             return False
         if not self.is_valid:
             return False
+
+        # Re-strip decorations (may have been restored by suspend)
+        cur_style = win32.get_window_style(self._hwnd)
+        cur_ex = win32.get_window_ex_style(self._hwnd)
+
+        new_style = cur_style & ~self._FS_STYLE_MASK
+        new_ex = cur_ex & ~self._FS_EX_STYLE_MASK
+
+        if new_style != cur_style:
+            win32.set_window_style(self._hwnd, new_style)
+        if new_ex != cur_ex:
+            win32.set_window_ex_style(self._hwnd, new_ex)
 
         win32.set_window_pos(
             self._hwnd,
