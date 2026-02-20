@@ -52,12 +52,16 @@ WS_THICKFRAME = 0x00040000
 WS_OVERLAPPEDWINDOW = 0x00CF0000
 
 # Extended window styles
-WS_EX_TOOLWINDOW = 0x00000080
-WS_EX_APPWINDOW = 0x00040000
-WS_EX_NOACTIVATE = 0x08000000
+WS_EX_DLGMODALFRAME = 0x00000001
 WS_EX_TOPMOST = 0x00000008
-WS_EX_LAYERED = 0x00080000
 WS_EX_TRANSPARENT = 0x00000020
+WS_EX_TOOLWINDOW = 0x00000080
+WS_EX_WINDOWEDGE = 0x00000100
+WS_EX_CLIENTEDGE = 0x00000200
+WS_EX_STATICEDGE = 0x00020000
+WS_EX_APPWINDOW = 0x00040000
+WS_EX_LAYERED = 0x00080000
+WS_EX_NOACTIVATE = 0x08000000
 
 # DWM attributes
 DWMWA_CLOAKED = 14
@@ -98,6 +102,7 @@ SWP_NOACTIVATE = 0x0010
 SWP_SHOWWINDOW = 0x0040
 SWP_FRAMECHANGED = 0x0020
 HWND_TOP = 0
+HWND_TOPMOST = -1
 HWND_NOTOPMOST = -2
 
 # ============================================================================
@@ -186,6 +191,16 @@ def get_window_style(hwnd: int) -> int:
 def get_window_ex_style(hwnd: int) -> int:
     """Return the WS_EX_* extended style bits."""
     return user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+
+
+def set_window_style(hwnd: int, style: int) -> int:
+    """Set WS_* style bits. Returns previous style."""
+    return user32.SetWindowLongW(hwnd, GWL_STYLE, style)
+
+
+def set_window_ex_style(hwnd: int, ex_style: int) -> int:
+    """Set WS_EX_* extended style bits. Returns previous ex_style."""
+    return user32.SetWindowLongW(hwnd, GWL_EXSTYLE, ex_style)
 
 
 def is_window_visible(hwnd: int) -> bool:
