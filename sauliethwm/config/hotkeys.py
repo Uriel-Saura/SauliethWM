@@ -21,6 +21,7 @@ Define y registra todos los keybindings:
     Ventana:
         Alt + Shift + C     -> Cerrar ventana enfocada
         Alt + Shift + M     -> Swap con master
+        Alt + F             -> Toggle fullscreen borderless
 
     Layout:
         Alt + Space         -> Siguiente layout
@@ -138,6 +139,7 @@ def register_all_hotkeys(
     # ------------------------------------------------------------------
     _bind(MOD_ALT | MOD_SHIFT, win32.VK_C, "close_window", "Close focused window")
     _bind(MOD_ALT | MOD_SHIFT, win32.VK_M, "swap_master", "Swap with master")
+    _bind(MOD_ALT, win32.VK_F, "toggle_fullscreen", "Toggle fullscreen")
 
     # ------------------------------------------------------------------
     # Layout
