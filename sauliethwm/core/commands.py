@@ -182,6 +182,7 @@ def build_default_commands(
     dispatcher: CommandDispatcher,
     wm: object,
     ws_manager: object,
+    hk_manager: object | None = None,
 ) -> None:
     """
     Register all built-in commands into the dispatcher.
@@ -193,11 +194,13 @@ def build_default_commands(
         dispatcher:  The CommandDispatcher to populate.
         wm:          The WindowManager instance.
         ws_manager:  The WorkspaceManager instance.
+        hk_manager:  Optional HotkeyManager for resize mode.
     """
     from sauliethwm.core.manager import WindowManager
     from sauliethwm.tiling.workspace_manager import WorkspaceManager
     from sauliethwm.tiling.directional import Direction, focus_direction, swap_direction
     from sauliethwm.tiling.layouts import LayoutType
+    from sauliethwm.core.resize_mode import ResizeMode
 
     assert isinstance(wm, WindowManager)
     assert isinstance(ws_manager, WorkspaceManager)
@@ -459,5 +462,48 @@ def build_default_commands(
     @dispatcher.command("retile_all", description="Force retile all workspaces", category="wm")
     def retile_all() -> None:
         ws_manager.retile_all()
+
+    # -- Resize mode (interactive) -------------------------------------
+    if hk_manager is not None:
+        from sauliethwm.core.keybinds import HotkeyManager as HKM
+        assert isinstance(hk_manager, HKM)
+
+        def _on_resize(direction: str) -> None:
+            """Dispatch resize by direction string."""
+            cmd_name = f"resize_{direction}"
+            dispatcher.execute(cmd_name)
+
+        def _on_exit_resize() -> None:
+            log.info("Resize mode deactivated")
+
+        _resize_mode = ResizeMode(
+            hk_manager=hk_manager,
+            on_resize=_on_resize,
+            on_exit=_on_exit_resize,
+        )
+
+        @dispatcher.command(
+            "enter_resize_mode",
+            description="Enter interactive resize mode (arrows resize, Esc/Enter exit)",
+            category="resize",
+        )
+        def enter_resize_mode() -> None:
+            _resize_mode.enter()
+
+        @dispatcher.command(
+            "exit_resize_mode",
+            description="Exit interactive resize mode",
+            category="resize",
+        )
+        def exit_resize_mode() -> None:
+            _resize_mode.exit()
+
+        @dispatcher.command(
+            "toggle_resize_mode",
+            description="Toggle interactive resize mode",
+            category="resize",
+        )
+        def toggle_resize_mode() -> None:
+            _resize_mode.toggle()
 
     log.info("Default commands registered: %d", dispatcher.count)
