@@ -156,6 +156,14 @@ class WorkspaceManager:
             ws.remove_window(w)
             log.debug("Removed stale window %s from ws %d", w, ws.id)
 
+    def _retile_ws(self, ws: Workspace, monitor_index: int) -> None:
+        """
+        Helper: retilea un workspace pasando work_rect y full_rect
+        del monitor indicado.
+        """
+        mon = self._monitors[monitor_index]
+        ws.retile(mon.work_rect, mon.full_rect)
+
     # ------------------------------------------------------------------
     # Propiedades
     # ------------------------------------------------------------------
@@ -297,8 +305,7 @@ class WorkspaceManager:
         self._monitor_ws[monitor_index] = target_ws_id
 
         # 5. Retilear el workspace destino
-        work_area = self._monitors[monitor_index].work_rect
-        target_ws.retile(work_area)
+        self._retile_ws(target_ws, monitor_index)
 
         log.info(
             "SWITCH ws %d -> ws %d (monitor %d)",
@@ -351,8 +358,8 @@ class WorkspaceManager:
             self._resume_events()
 
         # Retilear ambos con las areas de sus nuevos monitores
-        ws_b.retile(self._monitors[monitor_a].work_rect)
-        ws_a.retile(self._monitors[monitor_b].work_rect)
+        self._retile_ws(ws_b, monitor_a)
+        self._retile_ws(ws_a, monitor_b)
 
         log.info(
             "SWAP ws %d (mon %d) <-> ws %d (mon %d)",
@@ -379,6 +386,9 @@ class WorkspaceManager:
         """
         Agrega una ventana al workspace activo del monitor indicado.
 
+        Detecta automaticamente si la ventana es fullscreen nativa
+        (juegos, video players) y la marca como tal.
+
         Args:
             window:        Ventana a agregar.
             monitor_index: Monitor donde agregar (default: primario).
@@ -392,11 +402,16 @@ class WorkspaceManager:
             if ws.contains(window):
                 return False
 
+        # Detectar si es una ventana fullscreen nativa
+        mon = self._monitors[monitor_index]
+        fr = mon.full_rect
+        if window.is_native_fullscreen(fr.x, fr.y, fr.w, fr.h):
+            window.mark_as_fullscreen()
+
         ws = self.get_active_workspace(monitor_index)
         if ws.add_window(window, floating=floating):
             if ws.is_active and not floating:
-                work_area = self._monitors[monitor_index].work_rect
-                ws.retile(work_area)
+                self._retile_ws(ws, monitor_index)
             return True
         return False
 
@@ -414,7 +429,7 @@ class WorkspaceManager:
                 if ws.is_active:
                     mi = self.get_monitor_for_workspace(ws.id)
                     if mi is not None:
-                        ws.retile(self._monitors[mi].work_rect)
+                        self._retile_ws(ws, mi)
                 return True
         return False
 
@@ -482,7 +497,7 @@ class WorkspaceManager:
         if source_ws.is_active:
             mi = self.get_monitor_for_workspace(source_ws.id)
             if mi is not None:
-                source_ws.retile(self._monitors[mi].work_rect)
+                self._retile_ws(source_ws, mi)
 
         # 4. Agregar al destino
         target_ws.add_window(window)
@@ -491,7 +506,7 @@ class WorkspaceManager:
         if target_ws.is_active:
             mi = self.get_monitor_for_workspace(target_ws.id)
             if mi is not None:
-                target_ws.retile(self._monitors[mi].work_rect)
+                self._retile_ws(target_ws, mi)
         else:
             # Ocultar inmediatamente (con supresion para evitar feedback)
             self._suppress_events()
@@ -555,11 +570,11 @@ class WorkspaceManager:
 
         # Remover del origen
         source_ws.remove_window(window)
-        source_ws.retile(self._monitors[source_mi].work_rect)
+        self._retile_ws(source_ws, source_mi)
 
         # Agregar al destino
         target_ws.add_window(window)
-        target_ws.retile(self._monitors[next_mi].work_rect)
+        self._retile_ws(target_ws, next_mi)
 
         log.info(
             "MOVE TO MONITOR ventana %s: mon %d (ws %d) -> mon %d (ws %d)",
@@ -579,13 +594,13 @@ class WorkspaceManager:
         """Retilea el workspace activo en el monitor dado."""
         ws = self.get_active_workspace(monitor_index)
         if ws.is_active:
-            ws.retile(self._monitors[monitor_index].work_rect)
+            self._retile_ws(ws, monitor_index)
 
     def retile_all(self) -> None:
         """Retilea todos los workspaces activos."""
         for mi, ws_id in self._monitor_ws.items():
             ws = self._workspaces[ws_id]
-            ws.retile(self._monitors[mi].work_rect)
+            self._retile_ws(ws, mi)
 
     # ------------------------------------------------------------------
     # Refresh de monitores
@@ -620,18 +635,32 @@ class WorkspaceManager:
     # ------------------------------------------------------------------
     def restore_all_windows(self) -> None:
         """
-        Muestra todas las ventanas ocultas de workspaces inactivos.
+        Muestra todas las ventanas ocultas de workspaces inactivos y
+        restaura las ventanas que fueron puestas en fullscreen por el WM.
 
         Debe llamarse al cerrar el WM para que las ventanas que fueron
         ocultadas con SW_HIDE al cambiar de workspace vuelvan a ser
         visibles. Sin esto, las ventanas en workspaces inactivos quedan
         permanentemente ocultas al salir del WM.
+
+        Tambien restaura los estilos originales de ventanas en fullscreen
+        para que no queden sin bordes despues de cerrar el WM.
         """
         self._suppress_events()
         try:
             for ws_id, ws in self._workspaces.items():
+                # Restaurar ventanas fullscreen a su estado original
+                for window in ws.all_windows:
+                    if window.is_valid and window.is_fullscreen:
+                        window.exit_fullscreen()
+                        log.debug(
+                            "Restored fullscreen window %s from ws %d",
+                            window, ws_id,
+                        )
+
                 if ws.is_active:
                     continue
+
                 for window in ws.all_windows:
                     if window.is_valid:
                         win32.show_window(window.hwnd, win32.SW_SHOWNOACTIVATE)
