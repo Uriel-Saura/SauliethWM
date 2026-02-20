@@ -200,6 +200,11 @@ def main() -> None:
     #  which triggers the workspace handler to add them to the active ws)
     wm.start()
 
+    # Restore all hidden windows from inactive workspaces before exiting.
+    # Without this, windows on non-active workspaces remain permanently
+    # hidden (SW_HIDE) after the WM exits, making them inaccessible.
+    ws_manager.restore_all_windows()
+
     # Print final state
     print("\n" + ws_manager.dump_state())
 
