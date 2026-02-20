@@ -196,6 +196,7 @@ def build_default_commands(
     """
     from sauliethwm.core.manager import WindowManager
     from sauliethwm.tiling.workspace_manager import WorkspaceManager
+    from sauliethwm.tiling.directional import Direction, focus_direction, swap_direction
 
     assert isinstance(wm, WindowManager)
     assert isinstance(ws_manager, WorkspaceManager)
@@ -224,6 +225,26 @@ def build_default_commands(
         focused = wm.focused
         if focused is not None:
             focused.restore()
+
+    # -- Focus directional commands ------------------------------------
+    def _make_focus_dir(direction: Direction) -> CommandFn:
+        def _focus() -> None:
+            focused = wm.focused
+            if focused is None:
+                return
+            ws = ws_manager.find_window_workspace(focused)
+            if ws is None:
+                return
+            focus_direction(focused, ws.tiled_windows, direction)
+        return _focus
+
+    for _dir in Direction:
+        dispatcher.register(
+            f"focus_{_dir.value}",
+            _make_focus_dir(_dir),
+            description=f"Focus window to the {_dir.value}",
+            category="focus",
+        )
 
     # -- Layout commands -----------------------------------------------
     @dispatcher.command("next_layout", description="Switch to next layout", category="layout")
