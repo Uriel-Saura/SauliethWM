@@ -197,6 +197,7 @@ def build_default_commands(
     from sauliethwm.core.manager import WindowManager
     from sauliethwm.tiling.workspace_manager import WorkspaceManager
     from sauliethwm.tiling.directional import Direction, focus_direction, swap_direction
+    from sauliethwm.tiling.layouts import LayoutType
 
     assert isinstance(wm, WindowManager)
     assert isinstance(ws_manager, WorkspaceManager)
@@ -332,6 +333,79 @@ def build_default_commands(
     def decrease_gap() -> None:
         ws = ws_manager.get_active_workspace()
         ws.decrease_gap()
+        ws_manager.retile()
+
+    # -- Directional resize commands -----------------------------------
+    # resize_wider / resize_narrower: adjust the horizontal split
+    # resize_taller / resize_shorter: adjust the vertical split
+    # Behavior depends on the active layout:
+    #   - Tall:  wider/narrower grow/shrink master (horizontal axis)
+    #   - Wide:  taller/shorter grow/shrink master (vertical axis)
+    #   - ThreeColumn: wider/narrower grow/shrink master
+    #   - Monocle: no effect
+
+    @dispatcher.command(
+        "resize_wider",
+        description="Make focused area wider (grow master on Tall/ThreeCol)",
+        category="resize",
+    )
+    def resize_wider() -> None:
+        ws = ws_manager.get_active_workspace()
+        layout = ws.current_layout
+        lt = layout.layout_type
+        if lt in (LayoutType.TALL, LayoutType.THREE_COLUMN):
+            ws.grow_master()
+        elif lt == LayoutType.WIDE:
+            # On Wide, wider doesn't directly apply; grow master still makes
+            # the top area wider (occupies more vertical space -> wider feel)
+            ws.grow_master()
+        ws_manager.retile()
+
+    @dispatcher.command(
+        "resize_narrower",
+        description="Make focused area narrower (shrink master on Tall/ThreeCol)",
+        category="resize",
+    )
+    def resize_narrower() -> None:
+        ws = ws_manager.get_active_workspace()
+        layout = ws.current_layout
+        lt = layout.layout_type
+        if lt in (LayoutType.TALL, LayoutType.THREE_COLUMN):
+            ws.shrink_master()
+        elif lt == LayoutType.WIDE:
+            ws.shrink_master()
+        ws_manager.retile()
+
+    @dispatcher.command(
+        "resize_taller",
+        description="Make focused area taller (grow master on Wide)",
+        category="resize",
+    )
+    def resize_taller() -> None:
+        ws = ws_manager.get_active_workspace()
+        layout = ws.current_layout
+        lt = layout.layout_type
+        if lt == LayoutType.WIDE:
+            ws.grow_master()
+        elif lt in (LayoutType.TALL, LayoutType.THREE_COLUMN):
+            # On Tall, taller has no direct master effect; grow master
+            # gives the master column more width which can feel "taller"
+            ws.grow_master()
+        ws_manager.retile()
+
+    @dispatcher.command(
+        "resize_shorter",
+        description="Make focused area shorter (shrink master on Wide)",
+        category="resize",
+    )
+    def resize_shorter() -> None:
+        ws = ws_manager.get_active_workspace()
+        layout = ws.current_layout
+        lt = layout.layout_type
+        if lt == LayoutType.WIDE:
+            ws.shrink_master()
+        elif lt in (LayoutType.TALL, LayoutType.THREE_COLUMN):
+            ws.shrink_master()
         ws_manager.retile()
 
     # -- Workspace switch commands (1-9) --------------------------------
