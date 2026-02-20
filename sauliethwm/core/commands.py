@@ -448,6 +448,27 @@ def build_default_commands(
         if focused is not None:
             ws_manager.move_window_to_next_monitor(focused)
 
+    # -- Fullscreen commands -------------------------------------------
+    @dispatcher.command(
+        "toggle_fullscreen",
+        description="Toggle borderless fullscreen for focused window",
+        category="window",
+    )
+    def toggle_fullscreen() -> None:
+        focused = wm.focused
+        if focused is None:
+            return
+        ws = ws_manager.find_window_workspace(focused)
+        if ws is None:
+            return
+        mi = ws_manager.get_monitor_for_workspace(ws.id)
+        if mi is None:
+            return
+        mon = ws_manager.monitors[mi]
+        fr = mon.full_rect
+        focused.toggle_fullscreen(fr.x, fr.y, fr.w, fr.h)
+        ws_manager.retile(mi)
+
     # -- Spawn commands ------------------------------------------------
     from sauliethwm.core.spawn import spawn_async
 
