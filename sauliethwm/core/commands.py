@@ -448,6 +448,32 @@ def build_default_commands(
         if focused is not None:
             ws_manager.move_window_to_next_monitor(focused)
 
+    # -- Spawn commands ------------------------------------------------
+    from sauliethwm.core.spawn import spawn_async
+
+    def make_spawn_command(cmd: str) -> CommandFn:
+        """Create a spawn command for a specific program."""
+        def _spawn() -> None:
+            spawn_async(cmd)
+        return _spawn
+
+    # Register a generic spawn command that can be called with arguments
+    # via the dispatcher. For config-file usage, spawn_<name> commands
+    # can be registered dynamically.
+    dispatcher.register(
+        "spawn_terminal",
+        make_spawn_command("wt.exe"),
+        description="Launch Windows Terminal",
+        category="spawn",
+    )
+
+    dispatcher.register(
+        "spawn_explorer",
+        make_spawn_command("explorer.exe"),
+        description="Launch File Explorer",
+        category="spawn",
+    )
+
     # -- WM lifecycle --------------------------------------------------
     @dispatcher.command("quit_wm", description="Quit SauliethWM", category="wm")
     def quit_wm() -> None:
