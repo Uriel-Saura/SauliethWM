@@ -485,6 +485,47 @@ class Window:
 
         return False
 
+    def covers_monitor(
+        self, monitor_x: int, monitor_y: int, monitor_w: int, monitor_h: int,
+        threshold: float = 0.90,
+    ) -> bool:
+        """
+        Check if the window covers at least *threshold* (default 90%) of
+        the given monitor rectangle, regardless of window style flags.
+
+        This catches games and immersive apps that run in windowed-
+        borderless or exclusive-fullscreen mode — including those with
+        WS_CAPTION (e.g. Unity games like Honkai: Star Rail) that
+        is_native_fullscreen() would miss.
+
+        Args:
+            monitor_x/y/w/h: Full monitor rectangle.
+            threshold:       Minimum overlap ratio (0.0–1.0).
+
+        Returns:
+            True if the window covers >= threshold of the monitor.
+        """
+        if not self.is_valid:
+            return False
+
+        left, top, right, bottom = self.rect
+
+        # Intersection
+        ix0 = max(left, monitor_x)
+        iy0 = max(top, monitor_y)
+        ix1 = min(right, monitor_x + monitor_w)
+        iy1 = min(bottom, monitor_y + monitor_h)
+
+        if ix1 <= ix0 or iy1 <= iy0:
+            return False
+
+        overlap = (ix1 - ix0) * (iy1 - iy0)
+        monitor_area = monitor_w * monitor_h
+        if monitor_area <= 0:
+            return False
+
+        return (overlap / monitor_area) >= threshold
+
     def mark_as_fullscreen(self) -> None:
         """
         Mark this window as fullscreen without modifying its styles.

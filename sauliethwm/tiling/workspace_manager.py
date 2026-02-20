@@ -402,11 +402,20 @@ class WorkspaceManager:
             if ws.contains(window):
                 return False
 
-        # Detectar si es una ventana fullscreen nativa
+        # Detectar si es una ventana fullscreen nativa o que cubre
+        # la mayor parte del monitor (juegos, video players, launchers).
+        # Estas ventanas no responden a SetWindowPos/ShowWindow, asi que
+        # no se agregan al workspace para evitar interferir con el tiling.
         mon = self._monitors[monitor_index]
         fr = mon.full_rect
-        if window.is_native_fullscreen(fr.x, fr.y, fr.w, fr.h):
-            window.mark_as_fullscreen()
+        if (
+            window.is_native_fullscreen(fr.x, fr.y, fr.w, fr.h)
+            or window.covers_monitor(fr.x, fr.y, fr.w, fr.h)
+        ):
+            log.info(
+                "SKIP immersive/fullscreen window (not tiling): %s", window
+            )
+            return False
 
         ws = self.get_active_workspace(monitor_index)
         if ws.add_window(window, floating=floating):
