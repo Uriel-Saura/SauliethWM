@@ -374,6 +374,15 @@ class WindowManager:
 
     def _handle_minimize(self, hwnd: int) -> None:
         """A window was minimized."""
+        # During workspace switching we use SW_MINIMIZE before SW_HIDE
+        # to force-hide stubborn windows.  Ignore the resulting
+        # MINIMIZESTART events so the workspace handler doesn't
+        # remove windows from their workspaces mid-switch.
+        if self._suppress_hide_show:
+            return
+        if hwnd in self._suppressed_hwnds:
+            self._suppressed_hwnds.discard(hwnd)
+            return
         window = self._windows.get(hwnd)
         if window is not None:
             log.debug("MINIMIZE %s", window)
@@ -382,6 +391,9 @@ class WindowManager:
     def _handle_restore(self, hwnd: int) -> None:
         """A window was restored from minimized state."""
         if self._suppress_hide_show:
+            return
+        if hwnd in self._suppressed_hwnds:
+            self._suppressed_hwnds.discard(hwnd)
             return
         # It might be new to us
         if hwnd not in self._windows:

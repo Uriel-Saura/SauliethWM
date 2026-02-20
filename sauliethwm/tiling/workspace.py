@@ -349,33 +349,31 @@ class Workspace:
     # ------------------------------------------------------------------
     def hide_all_windows(self) -> None:
         """
-        Oculta todas las ventanas del workspace con SW_HIDE.
+        Oculta todas las ventanas del workspace.
 
-        Las ventanas en fullscreen deben suspender su estado (restaurar
-        estilos originales) antes de ocultarse; de lo contrario, la
-        ventana borderless puede quedar visible encima de todo al cambiar
-        de workspace. El flag _fullscreen se preserva para que retile()
-        pueda reapply al volver al workspace.
+        Usa SW_MINIMIZE seguido de SW_HIDE para garantizar que TODO tipo
+        de ventana quede oculta, incluyendo juegos y apps inmersivas que
+        ignoran SW_HIDE por si solo.  Minimizar primero fuerza al DWM a
+        desactivar la ventana; SW_HIDE la retira de la taskbar.
         """
         for window in self.all_windows:
             if window.is_valid:
-                if window.is_fullscreen:
-                    window.suspend_fullscreen()
+                win32.show_window(window.hwnd, win32.SW_MINIMIZE)
                 win32.show_window(window.hwnd, win32.SW_HIDE)
         log.debug("WS %d: ocultadas %d ventanas", self._id, self.window_count)
 
     def show_all_windows(self) -> None:
         """
-        Muestra todas las ventanas del workspace con SW_SHOWNOACTIVATE.
+        Muestra todas las ventanas del workspace.
 
-        Las ventanas que estaban en fullscreen antes de ser ocultadas
-        deben re-entrar a fullscreen. Esto se delega al retile() que se
-        llama despues de show_all_windows(), donde reapply_fullscreen()
-        reposiciona las ventanas fullscreen al rect del monitor.
+        Usa SW_RESTORE para sacar las ventanas de su estado minimizado
+        y oculto.  El retile posterior las reposiciona correctamente.
+        Las ventanas fullscreen se restauran via reapply_fullscreen()
+        durante retile().
         """
         for window in self.all_windows:
             if window.is_valid:
-                win32.show_window(window.hwnd, win32.SW_SHOWNOACTIVATE)
+                win32.show_window(window.hwnd, win32.SW_RESTORE)
         log.debug("WS %d: mostradas %d ventanas", self._id, self.window_count)
 
     # ------------------------------------------------------------------
