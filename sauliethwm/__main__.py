@@ -12,7 +12,6 @@ from sauliethwm.core.window import Window
 from sauliethwm.core import win32
 from sauliethwm.core.keybinds import HotkeyManager
 from sauliethwm.core.commands import CommandDispatcher, build_default_commands
-from sauliethwm.core.win_suppress import WinKeySuppressor
 from sauliethwm.tiling.workspace_manager import WorkspaceManager
 from sauliethwm.config.hotkeys import register_all_hotkeys
 
@@ -183,11 +182,6 @@ def main() -> None:
     # Vincular hotkeys a comandos del dispatcher
     hk_count = register_all_hotkeys(hk_manager, dispatcher)
 
-    # Suprimir tecla Win del sistema para evitar que abra el menu inicio
-    # cuando se usa como modificador en hotkeys del WM (Phase 4.9)
-    win_suppressor = WinKeySuppressor(suppress_standalone=True)
-    win_suppressor.install()
-
     # Suscribir logger global de eventos
     wm.on_all(on_event)
 
@@ -199,36 +193,32 @@ def main() -> None:
     print(f"  Workspaces: {ws_manager.workspace_count}")
     print(f"  Hotkeys: {hk_count}")
     print(f"  Commands: {dispatcher.count}")
-    print(f"  Win key suppression: {'active' if win_suppressor.is_installed else 'inactive'}")
     for mi in range(ws_manager.monitor_count):
         ws = ws_manager.get_active_workspace(mi)
         print(f"  Monitor {mi}: Workspace {ws.id} ({ws.layout_name})")
     print("")
     print("  Keybindings:")
-    print("    Win + 1..9            Switch workspace")
-    print("    Win + Shift + 1..9    Move window to workspace")
-    print("    Win + H/J/K/L         Focus left/down/up/right")
-    print("    Win + Shift + H/J/K/L Move window left/down/up/right")
-    print("    Win + Shift + C       Close focused window")
-    print("    Win + Shift + M       Swap with master")
-    print("    Win + Space           Next layout")
-    print("    Win + Shift + Space   Previous layout")
-    print("    Win + =/−             Grow/shrink master")
-    print("    Win + Shift + =/−     Increase/decrease gap")
-    print("    Win + R               Resize mode (arrows, Esc to exit)")
-    print("    Win + Return          Launch terminal")
-    print("    Win + E               Launch explorer")
-    print("    Win + Shift + R       Retile all")
-    print("    Win + Shift + Q       Quit SauliethWM")
+    print("    Alt + 1..9            Switch workspace")
+    print("    Alt + Shift + 1..9    Move window to workspace")
+    print("    Alt + H/J/K/L         Focus left/down/up/right")
+    print("    Alt + Shift + H/J/K/L Move window left/down/up/right")
+    print("    Alt + Shift + C       Close focused window")
+    print("    Alt + Shift + M       Swap with master")
+    print("    Alt + Space           Next layout")
+    print("    Alt + Shift + Space   Previous layout")
+    print("    Alt + =/−             Grow/shrink master")
+    print("    Alt + Shift + =/−     Increase/decrease gap")
+    print("    Alt + R               Resize mode (arrows, Esc to exit)")
+    print("    Alt + Return          Launch terminal")
+    print("    Alt + E               Launch explorer")
+    print("    Alt + Shift + R       Retile all")
+    print("    Alt + Shift + Q       Quit SauliethWM")
     print("=" * 60 + "\n")
 
     # Enter the blocking event loop
     # (wm.start() does the initial scan and emits WINDOW_ADDED for each,
     #  which triggers the workspace handler to add them to the active ws)
     wm.start()
-
-    # Cleanup: remove Win key hook before exiting
-    win_suppressor.uninstall()
 
     # Restore all hidden windows from inactive workspaces before exiting.
     # Without this, windows on non-active workspaces remain permanently
