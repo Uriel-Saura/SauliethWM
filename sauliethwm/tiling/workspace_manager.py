@@ -386,8 +386,11 @@ class WorkspaceManager:
         """
         Agrega una ventana al workspace activo del monitor indicado.
 
-        Detecta automaticamente si la ventana es fullscreen nativa
-        (juegos, video players) y la marca como tal.
+        Ventanas en fullscreen exclusivo (juegos en Direct3D/Vulkan que
+        toman el display completo) son ignoradas y no se agregan.
+
+        Ventanas borderless windowed (sin bordes, windowed) se gestionan
+        normalmente: se pueden mover entre workspaces y ocultar/mostrar.
 
         Args:
             window:        Ventana a agregar.
@@ -395,25 +398,29 @@ class WorkspaceManager:
             floating:      Si True, agregar como flotante.
 
         Returns:
-            True si se agrego, False si ya estaba en algun workspace.
+            True si se agrego, False si ya estaba, es fullscreen exclusivo,
+            o no se pudo agregar.
         """
         # Verificar que no este ya en algun workspace
         for ws in self._workspaces.values():
             if ws.contains(window):
                 return False
 
-        # Detectar si es una ventana fullscreen nativa o que cubre
-        # la mayor parte del monitor (juegos, video players, launchers).
+        # Detectar ventanas en fullscreen exclusivo real (juegos en
+        # Direct3D/Vulkan exclusive fullscreen). Estas ventanas se
+        # ignoran completamente: no se agregan a ningun workspace.
+        #
+        # Las ventanas borderless windowed (sin bordes, pueden cubrir
+        # o no el monitor) se gestionan normalmente: se pueden mover
+        # entre workspaces, ocultar y mostrar.
         mon = self._monitors[monitor_index]
         fr = mon.full_rect
-        if (
-            window.is_native_fullscreen(fr.x, fr.y, fr.w, fr.h)
-            or window.covers_monitor(fr.x, fr.y, fr.w, fr.h)
-        ):
-            window.mark_as_fullscreen()
+        if window.is_native_fullscreen(fr.x, fr.y, fr.w, fr.h):
             log.info(
-                "Auto-detected immersive/fullscreen window: %s", window
+                "Ignoring exclusive fullscreen window (not managed): %s",
+                window,
             )
+            return False
 
         ws = self.get_active_workspace(monitor_index)
         if ws.add_window(window, floating=floating):
@@ -515,19 +522,31 @@ class WorkspaceManager:
             if mi is not None:
                 self._retile_ws(target_ws, mi)
         else:
-            # Ocultar inmediatamente (con supresion para evitar feedback)
+            # Ocultar inmediatamente usando Z-order (off-screen + HWND_BOTTOM)
+            # en vez de SW_HIDE para evitar eventos de hide.
             self._suppress_events()
             try:
                 if window.is_valid:
-                    win32.show_window(window.hwnd, win32.SW_MINIMIZE)
-                    win32.show_window(window.hwnd, win32.SW_HIDE)
+                    if window.is_fullscreen:
+                        window.suspend_fullscreen()
+                    else:
+                        # Guardar posicion y mover off-screen con z-order bajo
+                        rect = win32.get_window_rect(window.hwnd)
+                        target_ws._saved_positions[window.hwnd] = (
+                            rect[0], rect[1],
+                            rect[2] - rect[0], rect[3] - rect[1],
+                        )
+                        win32.set_window_pos(
+                            window.hwnd,
+                            -32000, -32000, 0, 0,
+                            flags=win32.SWP_NOSIZE | win32.SWP_NOACTIVATE,
+                            insert_after=win32.HWND_BOTTOM,
+                        )
             finally:
                 self._resume_events()
 
             # 6. Re-registrar la ventana en _windows del WindowManager.
-            #    El SW_HIDE puede haber disparado _handle_hide sincronamente
-            #    (dentro de suppress_events, asi que fue ignorado), pero
-            #    necesitamos asegurar que la ventana siga en _windows para
+            #    Necesitamos asegurar que la ventana siga en _windows para
             #    que _ensure_windows_tracked la encuentre al cambiar
             #    al workspace destino.
             if self._wm is not None and window.is_valid:
@@ -647,9 +666,9 @@ class WorkspaceManager:
         restaura las ventanas que fueron puestas en fullscreen por el WM.
 
         Debe llamarse al cerrar el WM para que las ventanas que fueron
-        ocultadas con SW_HIDE al cambiar de workspace vuelvan a ser
+        movidas off-screen al cambiar de workspace vuelvan a ser
         visibles. Sin esto, las ventanas en workspaces inactivos quedan
-        permanentemente ocultas al salir del WM.
+        permanentemente fuera de pantalla al salir del WM.
 
         Tambien restaura los estilos originales de ventanas en fullscreen
         para que no queden sin bordes despues de cerrar el WM.
@@ -670,12 +689,27 @@ class WorkspaceManager:
                     continue
 
                 for window in ws.all_windows:
-                    if window.is_valid:
-                        win32.show_window(window.hwnd, win32.SW_RESTORE)
-                        log.debug(
-                            "Restored hidden window %s from ws %d",
-                            window, ws_id,
+                    if not window.is_valid:
+                        continue
+
+                    # Restaurar desde posiciones guardadas (Z-order)
+                    saved = ws._saved_positions.pop(window.hwnd, None)
+                    if saved is not None:
+                        sx, sy, sw, sh = saved
+                        win32.set_window_pos(
+                            window.hwnd,
+                            sx, sy, sw, sh,
+                            flags=win32.SWP_NOACTIVATE,
+                            insert_after=win32.HWND_TOP,
                         )
+                    else:
+                        # Fallback: restaurar con SW_RESTORE
+                        win32.show_window(window.hwnd, win32.SW_RESTORE)
+
+                    log.debug(
+                        "Restored hidden window %s from ws %d",
+                        window, ws_id,
+                    )
                 log.info(
                     "Restored %d windows from inactive ws %d",
                     ws.window_count, ws_id,

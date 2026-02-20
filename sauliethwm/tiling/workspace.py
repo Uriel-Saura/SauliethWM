@@ -68,6 +68,11 @@ class Workspace:
         self._tiled_windows: list[Window] = []
         self._floating_windows: list[Window] = []
 
+        # Posiciones guardadas para restaurar al volver al workspace.
+        # Mapa hwnd -> (x, y, w, h).  Se llena en hide_all_windows()
+        # y se consume en show_all_windows().
+        self._saved_positions: dict[int, tuple[int, int, int, int]] = {}
+
         # Si el workspace esta visible en algun monitor
         self._active = False
 
@@ -345,36 +350,104 @@ class Workspace:
         )
 
     # ------------------------------------------------------------------
-    # Ocultar / Mostrar todas las ventanas
+    # Ocultar / Mostrar todas las ventanas (Z-order)
     # ------------------------------------------------------------------
+    # Posicion off-screen para ventanas ocultas
+    _OFFSCREEN_X = -32000
+    _OFFSCREEN_Y = -32000
+
     def hide_all_windows(self) -> None:
         """
-        Oculta todas las ventanas del workspace.
+        Oculta todas las ventanas del workspace usando Z-order.
 
-        Usa SW_MINIMIZE seguido de SW_HIDE para garantizar que TODO tipo
-        de ventana quede oculta, incluyendo juegos y apps inmersivas que
-        ignoran SW_HIDE por si solo.  Minimizar primero fuerza al DWM a
-        desactivar la ventana; SW_HIDE la retira de la taskbar.
+        En vez de usar SW_HIDE (que causa problemas con ventanas borderless
+        y juegos), este metodo:
+          1. Guarda la posicion actual de cada ventana.
+          2. Mueve la ventana fuera de la pantalla (off-screen).
+          3. Envia la ventana al fondo del Z-order (HWND_BOTTOM).
+
+        Las ventanas siguen "visibles" para el OS (no se disparan eventos
+        EVENT_OBJECT_HIDE), pero al estar off-screen y en el fondo del
+        Z-order, el usuario no las ve.
+
+        Las posiciones guardadas se usan en show_all_windows() para
+        restaurar las ventanas a sus posiciones originales.
         """
         for window in self.all_windows:
-            if window.is_valid:
-                win32.show_window(window.hwnd, win32.SW_MINIMIZE)
-                win32.show_window(window.hwnd, win32.SW_HIDE)
-        log.debug("WS %d: ocultadas %d ventanas", self._id, self.window_count)
+            if not window.is_valid:
+                continue
+
+            if window.is_fullscreen:
+                # Ventanas fullscreen se manejan con suspend_fullscreen
+                window.suspend_fullscreen()
+                continue
+
+            # Guardar posicion actual en el dict _saved_positions
+            rect = window.rect
+            self._saved_positions[window.hwnd] = (
+                rect[0], rect[1], rect[2] - rect[0], rect[3] - rect[1]
+            )
+
+            # Mover off-screen y enviar al fondo del Z-order
+            win32.set_window_pos(
+                window.hwnd,
+                self._OFFSCREEN_X, self._OFFSCREEN_Y, 0, 0,
+                flags=win32.SWP_NOSIZE | win32.SWP_NOACTIVATE,
+                insert_after=win32.HWND_BOTTOM,
+            )
+
+        log.debug("WS %d: ocultadas %d ventanas (z-order)", self._id, self.window_count)
 
     def show_all_windows(self) -> None:
         """
         Muestra todas las ventanas del workspace.
 
-        Usa SW_RESTORE para sacar las ventanas de su estado minimizado
-        y oculto.  El retile posterior las reposiciona correctamente.
+        Restaura las ventanas desde off-screen a sus posiciones guardadas
+        y las trae al frente del Z-order (HWND_TOP).
+
         Las ventanas fullscreen se restauran via reapply_fullscreen()
-        durante retile().
+        durante retile().  Las ventanas normales se restauran a su
+        posicion guardada; el retile posterior las reposiciona
+        correctamente de todas formas.
         """
         for window in self.all_windows:
-            if window.is_valid:
+            if not window.is_valid:
+                continue
+
+            if window.is_fullscreen:
+                # Las fullscreen se restauran durante retile via
+                # reapply_fullscreen(); aqui solo aseguramos que sean
+                # visibles con SW_RESTORE por si suspend_fullscreen
+                # las dejo en un estado raro.
                 win32.show_window(window.hwnd, win32.SW_RESTORE)
-        log.debug("WS %d: mostradas %d ventanas", self._id, self.window_count)
+                continue
+
+            # Restaurar posicion guardada y traer al frente
+            saved = self._saved_positions.pop(window.hwnd, None)
+            if saved is not None:
+                sx, sy, sw, sh = saved
+                win32.set_window_pos(
+                    window.hwnd,
+                    sx, sy, sw, sh,
+                    flags=win32.SWP_NOACTIVATE,
+                    insert_after=win32.HWND_TOP,
+                )
+            else:
+                # No hay posicion guardada: restaurar si estaba minimizada
+                if window.is_minimized:
+                    win32.show_window(window.hwnd, win32.SW_RESTORE)
+                # Traer al frente del Z-order
+                win32.set_window_pos(
+                    window.hwnd,
+                    0, 0, 0, 0,
+                    flags=(
+                        win32.SWP_NOMOVE | win32.SWP_NOSIZE
+                        | win32.SWP_NOACTIVATE
+                    ),
+                    insert_after=win32.HWND_TOP,
+                )
+
+        log.debug("WS %d: mostradas %d ventanas (z-order)", self._id, self.window_count)
 
     # ------------------------------------------------------------------
     # Ajustes del layout activo

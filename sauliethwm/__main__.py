@@ -115,11 +115,21 @@ def create_workspace_handler(ws_manager: WorkspaceManager):
                             if mi is not None:
                                 ws_manager.retile(mi)
                         else:
-                            # El workspace no esta activo: ocultar la ventana
+                            # El workspace no esta activo: ocultar con Z-order
                             ws_manager._suppress_events()
                             try:
                                 if window.is_valid:
-                                    win32.show_window(window.hwnd, win32.SW_HIDE)
+                                    rect = win32.get_window_rect(window.hwnd)
+                                    target_ws._saved_positions[window.hwnd] = (
+                                        rect[0], rect[1],
+                                        rect[2] - rect[0], rect[3] - rect[1],
+                                    )
+                                    win32.set_window_pos(
+                                        window.hwnd,
+                                        -32000, -32000, 0, 0,
+                                        flags=win32.SWP_NOSIZE | win32.SWP_NOACTIVATE,
+                                        insert_after=win32.HWND_BOTTOM,
+                                    )
                             finally:
                                 ws_manager._resume_events()
                         return
@@ -214,6 +224,10 @@ def main() -> None:
     print("    Alt + E               Launch explorer")
     print("    Alt + Shift + R       Retile all")
     print("    Alt + Shift + Q       Quit SauliethWM")
+    print("")
+    print("  Workspace visibility:")
+    print("    Windows are hidden via Z-order (off-screen + HWND_BOTTOM)")
+    print("    Only visible in the workspace they belong to")
     print("=" * 60 + "\n")
 
     # Enter the blocking event loop

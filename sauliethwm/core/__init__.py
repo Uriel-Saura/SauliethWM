@@ -13,4 +13,7 @@ from sauliethwm.core.window import Window, WindowState
 from sauliethwm.core.manager import WindowManager
 from sauliethwm.core.keybinds import HotkeyManager, Hotkey
 
-__all__ = ["Window", "WindowState", "WindowManager", "HotkeyManager", "Hotkey"]
+__all__ = [
+    "Window", "WindowState", "WindowManager",
+    "HotkeyManager", "Hotkey",
+]
