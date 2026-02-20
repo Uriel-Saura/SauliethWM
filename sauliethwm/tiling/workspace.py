@@ -140,6 +140,16 @@ class Workspace:
         return list(self._tiled_windows)
 
     @property
+    def tiled_windows_mut(self) -> list[Window]:
+        """
+        Referencia directa (mutable) a la lista interna de ventanas tileadas.
+
+        Solo usar para operaciones que necesitan modificar el orden
+        in-place (como swap_direction). Retornar siempre retile despues.
+        """
+        return self._tiled_windows
+
+    @property
     def floating_windows(self) -> list[Window]:
         """Lista de ventanas flotantes (copia)."""
         return list(self._floating_windows)

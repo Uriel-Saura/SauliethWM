@@ -246,6 +246,30 @@ def build_default_commands(
             category="focus",
         )
 
+    # -- Move window directional commands ------------------------------
+    def _make_move_dir(direction: Direction) -> CommandFn:
+        def _move() -> None:
+            focused = wm.focused
+            if focused is None:
+                return
+            ws = ws_manager.find_window_workspace(focused)
+            if ws is None:
+                return
+            result = swap_direction(focused, ws.tiled_windows_mut, direction)
+            if result is not None:
+                mi = ws_manager.get_monitor_for_workspace(ws.id)
+                if mi is not None:
+                    ws_manager.retile(mi)
+        return _move
+
+    for _dir in Direction:
+        dispatcher.register(
+            f"move_window_{_dir.value}",
+            _make_move_dir(_dir),
+            description=f"Swap window with neighbor to the {_dir.value}",
+            category="window",
+        )
+
     # -- Layout commands -----------------------------------------------
     @dispatcher.command("next_layout", description="Switch to next layout", category="layout")
     def next_layout() -> None:
