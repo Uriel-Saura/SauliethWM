@@ -367,23 +367,37 @@ class Window:
 
     def suspend_fullscreen(self) -> bool:
         """
-        Temporarily restore window styles while keeping _fullscreen True.
+        Force-hide a fullscreen borderless window for workspace switch.
 
-        Used before SW_HIDE during workspace switch so that the
-        borderless window can be hidden reliably.  The fullscreen state
-        is preserved and will be re-applied by reapply_fullscreen()
-        when the workspace becomes active again.
+        Normal ShowWindow(SW_HIDE) may not reliably hide a borderless
+        window that covers the whole monitor.  This method:
+          1. Clears WS_VISIBLE directly from the style bits.
+          2. Moves the window off-screen with SetWindowPos + SWP_HIDEWINDOW.
+        The _fullscreen flag is preserved so reapply_fullscreen() can
+        restore the window when the workspace becomes active again.
 
         Returns:
-            True if styles were restored, False if not in fullscreen.
+            True if the operation was performed.
         """
         if not self._fullscreen:
             return False
         if not self.is_valid:
             return False
 
-        win32.set_window_style(self._hwnd, self._saved_style)
-        win32.set_window_ex_style(self._hwnd, self._saved_ex_style)
+        # 1. Strip WS_VISIBLE from style bits directly
+        cur_style = win32.get_window_style(self._hwnd)
+        win32.set_window_style(self._hwnd, cur_style & ~win32.WS_VISIBLE)
+
+        # 2. Move off-screen and request hide via SetWindowPos
+        win32.set_window_pos(
+            self._hwnd,
+            -32000, -32000, 1, 1,
+            flags=(
+                win32.SWP_NOZORDER
+                | win32.SWP_NOACTIVATE
+                | win32.SWP_HIDEWINDOW
+            ),
+        )
         log.debug("FULLSCREEN SUSPENDED %s", self)
         return True
 
@@ -409,7 +423,7 @@ class Window:
         if not self.is_valid:
             return False
 
-        # Re-strip decorations (may have been restored by suspend)
+        # Ensure decorations are stripped (suspend may have altered them)
         cur_style = win32.get_window_style(self._hwnd)
         cur_ex = win32.get_window_ex_style(self._hwnd)
 
@@ -421,6 +435,8 @@ class Window:
         if new_ex != cur_ex:
             win32.set_window_ex_style(self._hwnd, new_ex)
 
+        # Reposition to cover the full monitor; also SWP_SHOWWINDOW to
+        # ensure visibility in case suspend_fullscreen cleared WS_VISIBLE.
         win32.set_window_pos(
             self._hwnd,
             monitor_x, monitor_y, monitor_w, monitor_h,
@@ -428,6 +444,7 @@ class Window:
                 win32.SWP_NOZORDER
                 | win32.SWP_NOACTIVATE
                 | win32.SWP_FRAMECHANGED
+                | win32.SWP_SHOWWINDOW
             ),
         )
         return True
