@@ -616,6 +616,39 @@ class WorkspaceManager:
         self.retile_all()
 
     # ------------------------------------------------------------------
+    # Restaurar todas las ventanas al cerrar el WM
+    # ------------------------------------------------------------------
+    def restore_all_windows(self) -> None:
+        """
+        Muestra todas las ventanas ocultas de workspaces inactivos.
+
+        Debe llamarse al cerrar el WM para que las ventanas que fueron
+        ocultadas con SW_HIDE al cambiar de workspace vuelvan a ser
+        visibles. Sin esto, las ventanas en workspaces inactivos quedan
+        permanentemente ocultas al salir del WM.
+        """
+        self._suppress_events()
+        try:
+            for ws_id, ws in self._workspaces.items():
+                if ws.is_active:
+                    continue
+                for window in ws.all_windows:
+                    if window.is_valid:
+                        win32.show_window(window.hwnd, win32.SW_SHOWNOACTIVATE)
+                        log.debug(
+                            "Restored hidden window %s from ws %d",
+                            window, ws_id,
+                        )
+                log.info(
+                    "Restored %d windows from inactive ws %d",
+                    ws.window_count, ws_id,
+                )
+        finally:
+            self._resume_events()
+
+        log.info("All hidden windows restored for WM shutdown")
+
+    # ------------------------------------------------------------------
     # Resumen de estado para cierre
     # ------------------------------------------------------------------
     def get_status_summary(self) -> str:
