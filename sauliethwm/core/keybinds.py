@@ -127,6 +127,72 @@ class HotkeyManager:
 
         return hotkey_id
 
+    def replace(
+        self,
+        hotkey_id: int,
+        modifiers: int,
+        vk: int,
+        callback: HotkeyCallback,
+        description: str = "",
+    ) -> int | None:
+        """
+        Replace an existing hotkey in-place (hot-reload friendly).
+
+        Unregisters the old hotkey and registers a new one with the same
+        or different combo/callback.  If registration fails the old hotkey
+        is already gone (caller should handle gracefully).
+
+        Args:
+            hotkey_id:   ID of the hotkey to replace.
+            modifiers:   New modifier flags.
+            vk:          New virtual key code.
+            callback:    New callback function.
+            description: New human-readable description.
+
+        Returns:
+            The new hotkey ID if replaced successfully, None on failure.
+        """
+        old = self._hotkeys.get(hotkey_id)
+        if old is None:
+            log.warning("replace: hotkey id=%d not found", hotkey_id)
+            return None
+
+        # Unregister the old hotkey from the OS
+        win32.unregister_hotkey(hotkey_id)
+        del self._hotkeys[hotkey_id]
+
+        # Register the new one (gets a fresh ID)
+        new_id = self.register(modifiers, vk, callback, description)
+        if new_id is not None:
+            log.info(
+                "Hotkey replaced: old_id=%d -> new_id=%d  %s",
+                hotkey_id,
+                new_id,
+                description,
+            )
+        else:
+            log.error(
+                "Hotkey replace failed: old_id=%d was unregistered but "
+                "new combo could not be registered (%s)",
+                hotkey_id,
+                description,
+            )
+        return new_id
+
+    def find_by_combo(self, modifiers: int, vk: int) -> Hotkey | None:
+        """
+        Find a registered hotkey by its modifier+VK combination.
+
+        Useful for hot-reload: look up the existing hotkey before replacing.
+
+        Returns:
+            The Hotkey dataclass if found, None otherwise.
+        """
+        for hk in self._hotkeys.values():
+            if hk.modifiers == modifiers and hk.vk == vk:
+                return hk
+        return None
+
     def unregister(self, hotkey_id: int) -> bool:
         """Unregister a hotkey by its ID."""
         hotkey = self._hotkeys.pop(hotkey_id, None)
