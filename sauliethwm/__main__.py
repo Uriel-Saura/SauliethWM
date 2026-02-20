@@ -11,6 +11,8 @@ from sauliethwm.core.manager import WindowManager, WMEvent
 from sauliethwm.core.window import Window
 from sauliethwm.core import win32
 from sauliethwm.core.keybinds import HotkeyManager
+from sauliethwm.core.commands import CommandDispatcher, build_default_commands
+from sauliethwm.core.win_suppress import WinKeySuppressor
 from sauliethwm.tiling.workspace_manager import WorkspaceManager
 from sauliethwm.config.hotkeys import register_workspace_hotkeys
 
@@ -175,6 +177,15 @@ def main() -> None:
     hk_count = register_workspace_hotkeys(hk_manager, ws_manager, wm)
     wm.set_hotkey_manager(hk_manager)
 
+    # Registrar todos los comandos internos en el dispatcher (Phase 4)
+    dispatcher = CommandDispatcher()
+    build_default_commands(dispatcher, wm, ws_manager, hk_manager)
+
+    # Suprimir tecla Win del sistema para evitar que abra el menu inicio
+    # cuando se usa como modificador en hotkeys del WM (Phase 4.9)
+    win_suppressor = WinKeySuppressor(suppress_standalone=True)
+    win_suppressor.install()
+
     # Suscribir logger global de eventos
     wm.on_all(on_event)
 
@@ -185,6 +196,8 @@ def main() -> None:
     print(f"  Monitors: {ws_manager.monitor_count}")
     print(f"  Workspaces: {ws_manager.workspace_count}")
     print(f"  Hotkeys: {hk_count}")
+    print(f"  Commands: {dispatcher.count}")
+    print(f"  Win key suppression: {'active' if win_suppressor.is_installed else 'inactive'}")
     for mi in range(ws_manager.monitor_count):
         ws = ws_manager.get_active_workspace(mi)
         print(f"  Monitor {mi}: Workspace {ws.id} ({ws.layout_name})")
@@ -199,6 +212,9 @@ def main() -> None:
     # (wm.start() does the initial scan and emits WINDOW_ADDED for each,
     #  which triggers the workspace handler to add them to the active ws)
     wm.start()
+
+    # Cleanup: remove Win key hook before exiting
+    win_suppressor.uninstall()
 
     # Restore all hidden windows from inactive workspaces before exiting.
     # Without this, windows on non-active workspaces remain permanently
